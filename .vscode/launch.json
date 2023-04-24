@@ -1,0 +1,17 @@
+{
+    // Use IntelliSense to learn about possible attributes.
+    // Hover to view descriptions of existing attributes.
+    // For more information, visit: https://go.microsoft.com/fwlink/?linkid=830387
+    "version": "0.2.0",
+    "configurations": [
+        
+
+        {
+            "type": "cppvsdbg",
+            "request": "launch",
+            "name": "Launch Program",
+            "program": "./zig-cache/o/8f7f98f2108bf87a1ee20b3241a2ca12/test.exe",
+            "cwd": "${workspaceRoot}",
+        }
+    ]
+}

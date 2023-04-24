@@ -1,0 +1,97 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta http-equiv="X-UA-Compatible" content="IE=edge">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Document</title>
+</head>
+<body>
+    hello world
+
+    <canvas id="canvas" width=256 height=256>
+
+    </canvas>
+
+    <script>
+        var canvas = document.getElementById("canvas");
+        
+        var keyMap = [
+            37, // left
+            39, // right
+            40, // down
+            38, // up
+        ];
+        
+        var keys = [0,0,0,0];
+        function keyDownHandler(e) {
+            for (let index = 0; index < keyMap.length; index++) {
+                const element = keyMap[index];
+                if (e.keyCode === element) {
+                    keys[index] = 1;
+                    break;
+                }
+            }
+        }
+
+        function keyUpHandler(e) {
+            for (let index = 0; index < keyMap.length; index++) {
+                const element = keyMap[index];
+                if (e.keyCode === element) {
+                    keys[index] = 0;
+                    break;
+                }
+            }
+        }
+
+        document.addEventListener("keydown", keyDownHandler, false);
+        document.addEventListener("keyup", keyUpHandler, false);
+
+
+        const ctx = canvas.getContext("2d");
+        var imageData = ctx.getImageData(0, 0, 256, 256);
+
+        var memory = new WebAssembly.Memory({initial:100});
+
+
+        function isKeyDown(id) {
+            return keys[id];
+        }
+
+        function print(offset, length) {
+            var bytes = new Uint8Array(memory.buffer, offset, length);
+            var string = new TextDecoder('utf8').decode(bytes);
+            console.log(string);
+        }
+
+        function draw(offset, length) {
+            var bytes = new Uint8ClampedArray(memory.buffer, offset, length);
+            imageData.data.set(bytes);
+            ctx.putImageData(imageData, 0,0);
+        }
+
+        var importObject = {
+            env: {
+                print: print,
+                memory: memory,
+                draw: draw,
+                isKeyDown: isKeyDown,
+            },
+        };
+
+        WebAssembly.instantiateStreaming(fetch('lib/module.wasm'), importObject).then(
+            obj => {
+                obj.instance.exports.init();
+
+                const step = obj.instance.exports.step;
+                function s(t) {
+                    step(0);
+                    window.requestAnimationFrame(s);
+                }
+
+                s(0);
+            }
+        );
+    </script>
+</body>
+</html>
