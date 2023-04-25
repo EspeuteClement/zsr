@@ -14,6 +14,25 @@
     </canvas>
 
     <script>
+
+		let audioContext = null;
+
+		async function createProcessor() {
+			if (!audioContext) {
+				try {
+					audioContext = new AudioContext();
+					await audioContext.audioWorklet.addModule("audio.js");
+					await audioContext.resume();
+				}
+				catch (e) {
+					console.log(e);
+					return null;
+				}
+			}
+
+			return new AudioWorkletNode(audioContext, "my-audio-processor");
+		}
+
         var canvas = document.getElementById("canvas");
         
         var keyMap = [
@@ -92,6 +111,22 @@
                 s(0);
             }
         );
+
+		canvas.addEventListener("click", () => {
+			console.log("start");
+			audioContext.resume();
+		});
+
+		let newProcessorNode = createProcessor();
+		console.log(newProcessorNode);
+		newProcessorNode.then( obj => {
+			console.log("yay");
+			const soundSource = new OscillatorNode(audioContext);
+			soundSource.connect(obj).connect(audioContext.destination);
+			soundSource.start();
+			//boj.disabled = false;
+			//obj.connect(audioContext.destination, 2);
+		});
     </script>
 </body>
 </html>

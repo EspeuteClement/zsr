@@ -102,10 +102,13 @@ pub fn build(b: *std.build.Builder) void {
         web.strip = true;
 
         var install_html = b.addInstallFile(.{ .path = "src/web/index.html" }, "index.html");
+        var install_js = b.addInstallFile(.{ .path = "src/web/audio.js" }, "audio.js");
+
         var install_module = b.addInstallArtifact(web);
         const web_build = b.step("web", "Build the web version of the game");
         web_build.dependOn(&install_module.step);
         web_build.dependOn(&install_html.step);
+		web_build.dependOn(&install_js.step);
     }
 
     // {
