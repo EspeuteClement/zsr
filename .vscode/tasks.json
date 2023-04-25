@@ -7,6 +7,16 @@
             "label": "test",
             "type": "shell",
             "command": "zig build test --prominent-compile-errors"
+        },
+        {
+            "label": "web",
+            "type": "shell",
+            "command": "zig build web",
+            "problemMatcher": [],
+            "group": {
+                "kind": "build",
+                "isDefault": true
+            }
         }
     ]
 }

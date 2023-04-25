@@ -30,7 +30,17 @@
 				}
 			}
 
-			return new AudioWorkletNode(audioContext, "my-audio-processor");
+			var node = new AudioWorkletNode(audioContext, "my-audio-processor", {
+                    numberOfOutputs : 1, 
+                    outputChannelCount : [2]
+                });
+
+            
+            var data = await fetch("lib/module-audio.wasm");
+            var buff = await data.arrayBuffer();
+
+            node.port.postMessage(buff, [buff]);
+            return node;
 		}
 
         var canvas = document.getElementById("canvas");
@@ -118,7 +128,6 @@
 		});
 
 		let newProcessorNode = createProcessor();
-		console.log(newProcessorNode);
 		newProcessorNode.then( obj => {
 			console.log("yay");
 			const soundSource = new OscillatorNode(audioContext);

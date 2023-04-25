@@ -101,14 +101,31 @@ pub fn build(b: *std.build.Builder) void {
         web.import_memory = true;
         web.strip = true;
 
+        const web_audio = b.addSharedLibrary(.{
+            .name = "module-audio",
+            .root_source_file = .{ .path = "src/main-web-audio.zig" },
+            .target = .{ .cpu_arch = .wasm32, .os_tag = .freestanding },
+            .optimize = optimize,
+        });
+        web_audio.addIncludePath("libs/pocketmod/");
+        web_audio.addCSourceFile("libs/pocketmod/pocketmod.c", &.{});
+        web_audio.export_symbol_names = &[_][]const u8{ "init", "gen_samples" };
+        web_audio.import_memory = true;
+        web_audio.strip = false;
+        // web_audio.stack_protector = false;
+        // web_audio.disable_sanitize_c = true;
+        // web_audio.disable_stack_probing = true;
+
         var install_html = b.addInstallFile(.{ .path = "src/web/index.html" }, "index.html");
         var install_js = b.addInstallFile(.{ .path = "src/web/audio.js" }, "audio.js");
+        var install_module_audio = b.addInstallArtifact(web_audio);
 
         var install_module = b.addInstallArtifact(web);
         const web_build = b.step("web", "Build the web version of the game");
         web_build.dependOn(&install_module.step);
         web_build.dependOn(&install_html.step);
-		web_build.dependOn(&install_js.step);
+        web_build.dependOn(&install_js.step);
+        web_build.dependOn(&install_module_audio.step);
     }
 
     // {
