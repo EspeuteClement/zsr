@@ -70,14 +70,7 @@ pub fn init(rate: i32, alloc: std.mem.Allocator) void {
 
 var random = std.rand.DefaultPrng.init(0);
 var r: std.rand.Random = undefined;
-var counter: usize = 100;
 pub fn gen_samples(numSamples: i32) []f32 {
-    counter -= 1;
-    if (counter == 0) {
-        counter = r.intRangeAtMost(usize, 12, 50);
-        state.playSound(.@"test");
-    }
-
     const numSamples2 = @intCast(usize, numSamples) * 2;
     if (samples.len < numSamples2) {
         samples = allocator.realloc(samples, numSamples2) catch unreachable;

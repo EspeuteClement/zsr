@@ -1,21 +1,21 @@
 const std = @import("std");
 
 pub const VirtualButton = enum {
+    left,
+    right,
+    down,
+    up,
     a,
     b,
     x,
     y,
-    left,
-    right,
-    up,
-    down,
     start,
     select,
 };
 
 pub const Input = struct {
-    current_state : Array = Array.initFill(false),
-    previous_state : Array = Array.initFill(false),
+    current_state: Array = Array.initFill(false),
+    previous_state: Array = Array.initFill(false),
 
     const Array = std.EnumArray(VirtualButton, bool);
 
@@ -41,7 +41,7 @@ pub const Input = struct {
     }
 
     test is_down {
-        var i : Input = .{};
+        var i: Input = .{};
         i.new_input_frame();
         i.set_input(.a, true);
 
@@ -50,7 +50,7 @@ pub const Input = struct {
     }
 
     test is_just_pressed {
-        var i : Input = .{};
+        var i: Input = .{};
         i.new_input_frame();
         i.set_input(.b, true);
 
@@ -62,7 +62,7 @@ pub const Input = struct {
     }
 
     test is_just_released {
-        var i : Input = .{};
+        var i: Input = .{};
         i.new_input_frame();
         i.set_input(.b, true);
 
@@ -71,7 +71,6 @@ pub const Input = struct {
 
         try std.testing.expect(!i.is_just_released(.a));
         try std.testing.expect(i.is_just_released(.b));
-
     }
 };
 

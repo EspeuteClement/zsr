@@ -3,6 +3,7 @@ const sw = @import("softwareRenderer.zig");
 const input = @import("input.zig");
 const stbi = @import("stb_image.zig");
 const audio = @import("audio.zig");
+const game = @import("game.zig");
 
 const c = @cImport({
     @cInclude("SDL.h");
@@ -29,7 +30,7 @@ pub fn main() !void {
 
     const windWidth = 256;
     const windHeight = 256;
-    const zoom = 3;
+    const zoom = 2;
 
     _ = c.SDL_Init(c.SDL_INIT_EVERYTHING);
 
@@ -38,13 +39,10 @@ pub fn main() !void {
     var rend = c.SDL_CreateRenderer(win, 0, c.SDL_RENDERER_PRESENTVSYNC);
 
     var tex = c.SDL_CreateTexture(rend, c.SDL_PIXELFORMAT_ABGR8888, c.SDL_TEXTUREACCESS_STREAMING, windWidth, windHeight);
-    _ = tex;
 
     var time: i32 = 0;
 
     var timer = try std.time.Timer.start();
-
-    var game_input: input.Input = .{};
 
     const wanted_audiospec = c.SDL_AudioSpec{
         .freq = 48000,
@@ -71,6 +69,7 @@ pub fn main() !void {
     if (audio_device == 0) return error.AudioInitFailed;
 
     audio.init(wanted_audiospec.freq, allocator);
+    game.init(allocator);
 
     c.SDL_PauseAudioDevice(audio_device, 0);
 
@@ -84,6 +83,7 @@ pub fn main() !void {
 
         // input
         {
+            game.input.new_input_frame();
             var num_keys: c_int = undefined;
             var kbd = c.SDL_GetKeyboardState(&num_keys);
 
@@ -98,13 +98,15 @@ pub fn main() !void {
             };
 
             for (mapping) |m| {
-                game_input.set_input(m.b, kbd[m.k] != 0);
+                game.input.set_input(m.b, kbd[m.k] != 0);
             }
         }
 
-        //_ = c.SDL_UpdateTexture(tex, null, @ptrCast([*c]u8, img.pixels.ptr), 320 * 4);
-        //_ = c.SDL_RenderCopy(rend, tex, null, &c.SDL_Rect{ .x = 0, .y = 0, .w = windWidth * zoom, .h = windHeight * zoom });
-        //_ = c.SDL_RenderPresent(rend);
+        game.step();
+
+        _ = c.SDL_UpdateTexture(tex, null, @ptrCast([*c]u8, game.img.pixels.ptr), windWidth * 4);
+        _ = c.SDL_RenderCopy(rend, tex, null, &c.SDL_Rect{ .x = 0, .y = 0, .w = windWidth * zoom, .h = windHeight * zoom });
+        _ = c.SDL_RenderPresent(rend);
 
         time += 1;
         var perf = timer.lap();
