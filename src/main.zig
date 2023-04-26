@@ -2,12 +2,23 @@ const std = @import("std");
 const sw = @import("softwareRenderer.zig");
 const input = @import("input.zig");
 const stbi = @import("stb_image.zig");
+const audio = @import("audio.zig");
 
 const c = @cImport({
     @cInclude("SDL.h");
 });
 
 const callocators = @import("callocators.zig");
+
+pub fn sdl_audio_callback(_: ?*anyopaque, data: [*c]u8, len: c_int) callconv(.C) void {
+    var output = std.mem.bytesAsSlice(f32, @alignCast(@alignOf(f32), data)[0..@intCast(usize, len)]);
+
+    var samples = audio.gen_samples(128);
+
+    for (output, samples) |*o, i| {
+        o.* = i;
+    }
+}
 
 pub fn main() !void {
     var gpa = std.heap.GeneralPurposeAllocator(.{}){};
@@ -27,12 +38,43 @@ pub fn main() !void {
     var rend = c.SDL_CreateRenderer(win, 0, c.SDL_RENDERER_PRESENTVSYNC);
 
     var tex = c.SDL_CreateTexture(rend, c.SDL_PIXELFORMAT_ABGR8888, c.SDL_TEXTUREACCESS_STREAMING, windWidth, windHeight);
+    _ = tex;
 
     var time: i32 = 0;
 
     var timer = try std.time.Timer.start();
 
     var game_input: input.Input = .{};
+
+    const wanted_audiospec = c.SDL_AudioSpec{
+        .freq = 48000,
+        .format = c.AUDIO_F32,
+        .silence = 0,
+        .channels = 2,
+        .samples = 128,
+        .padding = 0,
+        .size = 0,
+        .callback = sdl_audio_callback,
+        .userdata = null,
+    };
+
+    var got_audiospec: c.SDL_AudioSpec = undefined;
+
+    var audio_device = c.SDL_OpenAudioDevice(
+        null,
+        @boolToInt(false),
+        &wanted_audiospec,
+        &got_audiospec,
+        @boolToInt(false),
+    );
+
+    if (audio_device == 0) return error.AudioInitFailed;
+
+    audio.init(wanted_audiospec.freq, allocator);
+
+    c.SDL_PauseAudioDevice(audio_device, 0);
+
+    //audio.init(rate: i32, alloc: std.mem.Allocator)
 
     while (true) {
         var e: c.SDL_Event = undefined;
@@ -61,8 +103,8 @@ pub fn main() !void {
         }
 
         //_ = c.SDL_UpdateTexture(tex, null, @ptrCast([*c]u8, img.pixels.ptr), 320 * 4);
-        _ = c.SDL_RenderCopy(rend, tex, null, &c.SDL_Rect{ .x = 0, .y = 0, .w = windWidth * zoom, .h = windHeight * zoom });
-        _ = c.SDL_RenderPresent(rend);
+        //_ = c.SDL_RenderCopy(rend, tex, null, &c.SDL_Rect{ .x = 0, .y = 0, .w = windWidth * zoom, .h = windHeight * zoom });
+        //_ = c.SDL_RenderPresent(rend);
 
         time += 1;
         var perf = timer.lap();

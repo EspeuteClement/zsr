@@ -36,9 +36,10 @@ pub fn build(b: *std.build.Builder) void {
             .install_subdir = "bin/res/",
         });
 
-        exe.step.dependOn(&install_res.step);
+        exe_install.step.dependOn(&install_res.step);
+
         const build_exe_step = b.step("exe", "Build and install the exe");
-        build_exe_step.dependOn(&exe.step);
+        build_exe_step.dependOn(&exe_install.step);
 
         run_cmd.step.dependOn(&exe_install.step);
         if (b.args) |args| {

@@ -10,7 +10,7 @@
             "type": "cppvsdbg",
             "request": "launch",
             "name": "Launch Program",
-            "program": "./zig-cache/o/8f7f98f2108bf87a1ee20b3241a2ca12/test.exe",
+            "program": "./zig-out/bin/zsr.exe",
             "cwd": "${workspaceRoot}",
         }
     ]
