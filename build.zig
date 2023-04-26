@@ -108,13 +108,17 @@ pub fn build(b: *std.build.Builder) void {
             .optimize = optimize,
         });
         web_audio.addIncludePath("libs/pocketmod/");
+        web_audio.addIncludePath("libs/dr_wav/");
+        web_audio.addCSourceFile("libs/dr_wav/dr_wav.c", &.{});
+		web_audio.linkLibC();
+
         web_audio.addCSourceFile("libs/pocketmod/pocketmod.c", &.{});
         web_audio.export_symbol_names = &[_][]const u8{ "init", "gen_samples" };
         web_audio.import_memory = true;
         web_audio.strip = false;
-        // web_audio.stack_protector = false;
-        // web_audio.disable_sanitize_c = true;
-        // web_audio.disable_stack_probing = true;
+        web_audio.stack_protector = false;
+        web_audio.disable_sanitize_c = true;
+        web_audio.disable_stack_probing = true;
 
         var install_html = b.addInstallFile(.{ .path = "src/web/index.html" }, "index.html");
         var install_js = b.addInstallFile(.{ .path = "src/web/audio.js" }, "audio.js");
