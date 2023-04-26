@@ -1,4 +1,7 @@
 const std = @import("std");
+const callocators = @import("callocators.zig");
+const sound = @import("sounds.zig");
+
 const c = @cImport({
     @cInclude("pocketmod.h");
     @cInclude("dr_wav.h");
@@ -37,75 +40,63 @@ var samples: []f32 = undefined;
 var tempBuffer: []f32 = undefined;
 
 var pocketmod: c.pocketmod_context = std.mem.zeroInit(c.pocketmod_context, .{});
-var data = @embedFile("web/bananasplit.mod");
-var data_wav = @embedFile("web/sound.wav");
-var dr_wav: c.drwav = undefined;
+var pocketmod_data = @embedFile("web/bananasplit.mod");
 var soundPlayed: bool = true;
 
-const alignment = 16;
-const padded_metadata_size = std.mem.alignForward(@sizeOf(Metadata), alignment);
-const Metadata = struct {
-    size: usize,
+const soundData = brk: {
+    const decls = @typeInfo(sound.SoundList).Struct.decls;
+    var sounds: [decls.len][]const u8 = undefined;
 
-    fn fullLen(_data: Metadata) usize {
-        return padded_metadata_size + _data.size;
+    for (decls, 0..) |decl, i| {
+        sounds[i] = @embedFile(@field(sound.SoundList, decl.name));
     }
+
+    break :brk sounds;
 };
 
-export fn zig_malloc(size: usize) ?[*]align(alignment) u8 {
-    const metadata = Metadata{
-        .size = size,
-    };
-    const full_alloc = allocator.alignedAlloc(u8, alignment, metadata.fullLen()) catch return null;
-    std.mem.bytesAsValue(Metadata, full_alloc[0..@sizeOf(Metadata)]).* = metadata;
-    return full_alloc[padded_metadata_size..].ptr;
-}
-
-export fn zig_realloc(maybe_ptr: ?[*]align(alignment) u8, new_size: usize) ?[*]align(alignment) u8 {
-    const ptr = maybe_ptr orelse return @call(.always_inline, zig_malloc, .{new_size});
-    const old_ptr = ptr - padded_metadata_size;
-    const old_metadata = std.mem.bytesToValue(Metadata, old_ptr[0..@sizeOf(Metadata)]);
-    const new_metadata = Metadata{
-        .size = new_size,
-    };
-    const new_slice = allocator.realloc(old_ptr[0..old_metadata.fullLen()], new_metadata.fullLen()) catch
-        return null;
-    std.mem.bytesAsValue(Metadata, new_slice[0..@sizeOf(Metadata)]).* = new_metadata;
-    return new_slice[padded_metadata_size..].ptr;
-}
-
-export fn zig_free(maybe_ptr: ?[*]align(alignment) u8) void {
-    const ptr = maybe_ptr orelse return;
-    const real_ptr = ptr - padded_metadata_size;
-    const metadata = std.mem.bytesToValue(Metadata, real_ptr[0..@sizeOf(Metadata)]);
-    allocator.free(real_ptr[0..metadata.fullLen()]);
-}
-
-const drwavalloc: c.drwav_allocation_callbacks = .{
-    .pUserData = null,
-    .onMalloc = null,
-    .onRealloc = null,
-    .onFree = null,
+const Sound = struct {
+    ctx: c.drwav = undefined,
 };
+
+const State = struct {
+    sounds: std.ArrayListUnmanaged(Sound) = .{},
+
+    pub fn playSound(self: *Self, snd: sound.Sound) void {
+        var ctx = self.sounds.addOne(allocator) catch return;
+
+        var data = soundData[@enumToInt(snd)];
+        var res = c.drwav_init_memory(&ctx.ctx, data.ptr, data.len, null);
+        if (res == 0) @panic("couldn't init dr_wav");
+    }
+
+    const Self = @This();
+};
+
+var state: State = .{};
 
 pub export fn init(rate: i32) void {
     allocator = gpa.allocator();
+    callocators.allocator = allocator;
 
     samples = allocator.alloc(f32, 128 * 2) catch unreachable;
     tempBuffer = allocator.alloc(f32, 128 * 2) catch unreachable;
 
     {
-        var res = c.pocketmod_init(&pocketmod, data, data.len, @intCast(c_int, rate));
+        var res = c.pocketmod_init(&pocketmod, pocketmod_data, pocketmod_data.len, @intCast(c_int, rate));
         if (res == 0) @panic("couldn't init");
     }
 
-    {
-        var res = c.drwav_init_memory(&dr_wav, data_wav, data_wav.len, null);
-        if (res == 0) @panic("couldn't init dr_wav");
-    }
+    state.playSound(.@"test");
 }
 
+var counter: usize = 100;
 pub export fn gen_samples(numSamples: i32) i32 {
+    counter -= 1;
+    if (counter == 0) {
+        counter = 100;
+        state.playSound(.@"test");
+    }
+
     const numSamples2 = @intCast(usize, numSamples) * 2;
     if (samples.len < numSamples2) {
         samples = allocator.realloc(samples, numSamples2) catch unreachable;
@@ -125,19 +116,29 @@ pub export fn gen_samples(numSamples: i32) i32 {
         }
     }
 
-    if (soundPlayed) {
-        const numChannels = dr_wav.channels;
-        if (numChannels > 2) @panic("Too Many Channels");
-        const len = numSamples * numChannels;
-        var read = @intCast(usize, c.drwav_read_pcm_frames_f32(&dr_wav, @intCast(usize, len), tempBuffer.ptr));
+    {
+        var idx: usize = state.sounds.items.len;
+        while (idx > 0) {
+            idx -= 1;
+            const snd = &state.sounds.items[idx];
+            const drwav = &snd.ctx;
 
-        if (read < len) {
-            soundPlayed = false;
-        }
-        if (numChannels == 1) {
-            mixMono(tempBuffer[0..read], samples[0 .. read * 2]);
-        } else {
-            mix(tempBuffer[0..read], samples[0..read]);
+            const numChannels = drwav.channels;
+            if (numChannels > 2) @panic("Too Many Channels");
+            const len = numSamples * numChannels;
+            var read = @intCast(usize, c.drwav_read_pcm_frames_f32(drwav, @intCast(usize, len), tempBuffer.ptr));
+
+            if (numChannels == 1) {
+                mixMono(tempBuffer[0..read], samples[0 .. read * 2]);
+            } else {
+                mix(tempBuffer[0..read], samples[0..read]);
+            }
+
+            if (read < len) {
+                var res = c.drwav_uninit(drwav);
+                if (res == 0) @panic("wtf");
+                _ = state.sounds.swapRemove(idx);
+            }
         }
     }
 
