@@ -109,13 +109,23 @@ pub fn build(b: *std.build.Builder) void {
         });
         web_audio.addIncludePath("libs/pocketmod/");
         web_audio.addIncludePath("libs/dr_wav/");
-        web_audio.addCSourceFile("libs/dr_wav/dr_wav.c", &.{});
-		web_audio.linkLibC();
+
+        var drwav = b.addStaticLibrary(.{
+            .name = "drwav",
+            .target = .{ .cpu_arch = .wasm32, .os_tag = .freestanding },
+            .optimize = .ReleaseSmall,
+        });
+        drwav.linkLibC();
+        drwav.addCSourceFile("libs/dr_wav/dr_wav.c", &.{});
+        drwav.disable_sanitize_c = true;
+        drwav.disable_stack_probing = true;
+        drwav.stack_protector = false;
 
         web_audio.addCSourceFile("libs/pocketmod/pocketmod.c", &.{});
         web_audio.export_symbol_names = &[_][]const u8{ "init", "gen_samples" };
         web_audio.import_memory = true;
         web_audio.strip = false;
+        web_audio.linkLibrary(drwav);
         web_audio.stack_protector = false;
         web_audio.disable_sanitize_c = true;
         web_audio.disable_stack_probing = true;

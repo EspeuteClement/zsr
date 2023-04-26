@@ -1,5 +1,10 @@
 #define DR_WAV_NO_STDIO
 
+#define DRWAV_ASSERT(x)
+#define DRWAV_MALLOC(sz) zig_malloc(sz)
+#define DRWAV_REALLOC(p,newsz) zig_realloc(p,newsz)
+#define DRWAV_FREE(p) zig_free(p)
+
 /*
 WAV audio loader and writer. Choice of public domain or MIT-0. See license statements at the end of this file.
 dr_wav - v0.13.8 - 2023-03-25

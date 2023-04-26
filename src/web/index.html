@@ -40,6 +40,10 @@
             var buff = await data.arrayBuffer();
 
             node.port.postMessage(buff, [buff]);
+            node.port.onmessage = (e) => {
+                var string = new TextDecoder('utf8').decode(e.data);
+                console.log(string);
+            };
             return node;
 		}
 

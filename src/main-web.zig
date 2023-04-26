@@ -64,6 +64,7 @@ var ralsei: sw.Image = undefined;
 pub export fn init() void {
     allocator = gpa.allocator();
     stbi.init(allocator);
+    print("init");
     img = sw.Image.init(allocator, windWidth, windHeight) catch unreachable;
     ralsei = stbi.load_from_memory_to_Image(@embedFile("web/ben_shmark.png"), allocator) catch @panic("aaa");
 }
