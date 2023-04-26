@@ -12,64 +12,56 @@ pub fn build(b: *std.build.Builder) void {
     // between Debug, ReleaseSafe, ReleaseFast, and ReleaseSmall.
     const optimize = b.standardOptimizeOption(.{});
 
-    const exe = b.addExecutable(.{
-        .name = "zsr",
-        .root_source_file = .{ .path = "src/main.zig" },
-        .target = target,
-        .optimize = optimize,
-    });
-    configure(b, exe);
+    {
+        const exe = b.addExecutable(.{
+            .name = "zsr",
+            .root_source_file = .{ .path = "src/main.zig" },
+            .target = target,
+            .optimize = optimize,
+        });
+        configure(b, exe);
 
-    var exe_install = b.addInstallArtifact(exe);
+        exe.addCSourceFile("libs/dr_wav/dr_wav.c", &.{});
+        exe.addCSourceFile("libs/pocketmod/pocketmod.c", &.{});
+        exe.addIncludePath("libs/pocketmod/");
+        exe.addIncludePath("libs/dr_wav/");
 
-    // const bunnyMark = b.addExecutable(.{
-    //     .name = "bunny_mark",
-    //     .root_source_file = .{ .path = "src/bunny_mark.zig" },
-    //     .target = target,
-    //     .optimize = optimize,
-    // });
-    // configure(b, bunnyMark);
+        var exe_install = b.addInstallArtifact(exe);
 
-    // b.installArtifact(bunnyMark);
-    // stb_image
+        const run_cmd = b.addRunArtifact(exe);
 
-    const run_cmd = b.addRunArtifact(exe);
+        var install_res = b.addInstallDirectory(.{
+            .source_dir = "res",
+            .install_dir = .{ .custom = "" },
+            .install_subdir = "bin/res/",
+        });
 
-    var install_res = b.addInstallDirectory(.{
-        .source_dir = "res",
-        .install_dir = .{ .custom = "" },
-        .install_subdir = "bin/res/",
-    });
+        exe.step.dependOn(&install_res.step);
+        const build_exe_step = b.step("exe", "Build and install the exe");
+        build_exe_step.dependOn(&exe.step);
 
-    exe.step.dependOn(&install_res.step);
+        run_cmd.step.dependOn(&exe_install.step);
+        if (b.args) |args| {
+            run_cmd.addArgs(args);
+        }
 
-    run_cmd.step.dependOn(&exe_install.step);
-    if (b.args) |args| {
-        run_cmd.addArgs(args);
+        const run_step = b.step("run", "Run the app");
+        run_step.dependOn(&run_cmd.step);
     }
 
-    // const run_bunnyMark = b.addRunArtifact(bunnyMark);
-    // run_bunnyMark.step.dependOn(b.getInstallStep());
-    // if (b.args) |args| {
-    //     run_bunnyMark.addArgs(args);
-    // }
+    // Tests
+    {
+        const exe_tests = b.addTest(.{ .root_source_file = .{ .path = "src/main.zig" } });
+        configure(b, exe_tests);
 
-    const run_step = b.step("run", "Run the app");
-    run_step.dependOn(&run_cmd.step);
+        var test_options = b.addOptions();
+        const test_path = comptime (std.fs.path.dirname(@src().file) orelse ".") ++ "/src/test/";
+        test_options.addOption([]const u8, "test_path", test_path);
+        exe_tests.addOptions("tests", test_options);
 
-    // const run_step_bunnyMark = b.step("run-bunny", "Run bunny mark");
-    // run_step_bunnyMark.dependOn(&run_bunnyMark.step);
-
-    const exe_tests = b.addTest(.{ .root_source_file = .{ .path = "src/main.zig" } });
-    configure(b, exe_tests);
-
-    var test_options = b.addOptions();
-    const test_path = comptime (std.fs.path.dirname(@src().file) orelse ".") ++ "/src/test/";
-    test_options.addOption([]const u8, "test_path", test_path);
-    exe_tests.addOptions("tests", test_options);
-
-    const test_step = b.step("test", "Run unit tests");
-    test_step.dependOn(&exe_tests.step);
+        const test_step = b.step("test", "Run unit tests");
+        test_step.dependOn(&exe_tests.step);
+    }
 
     // Web build
     {

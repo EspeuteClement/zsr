@@ -7,38 +7,18 @@ const c = @cImport({
     @cInclude("SDL.h");
 });
 
+const callocators = @import("callocators.zig");
+
 pub fn main() !void {
     var gpa = std.heap.GeneralPurposeAllocator(.{}){};
     defer std.debug.assert(!gpa.deinit());
 
     var allocator = gpa.allocator();
+    callocators.allocator = allocator;
 
-    const windWidth = 320;
-    const windHeight = 160;
+    const windWidth = 256;
+    const windHeight = 256;
     const zoom = 3;
-
-    var fb = try allocator.alloc(u32, windWidth * windHeight);
-    defer allocator.free(fb);
-
-    std.mem.set(u32, fb, 0xFF777777);
-
-    var partyred_ralsei = try stbi.load_to_Image("res/partired_ralsei2.png", allocator);
-    defer partyred_ralsei.deinit(allocator);
-
-    var ralsei_x: i32 = 0;
-    var ralsei_y: i32 = 0;
-
-    var img = try sw.Image.init(allocator, windWidth, windHeight);
-    defer img.deinit(allocator);
-
-    const dk_gray = sw.Color.fromU32(0xFF222222);
-    const lt_gray = sw.Color.fromU32(0xFF999999);
-    const red = sw.Color{ .r = 255, .g = 0, .b = 0 };
-    const green = sw.Color{ .r = 0, .g = 255, .b = 0 };
-    const blue = sw.Color{ .r = 0, .g = 0, .b = 255 };
-
-    img.drawClear(dk_gray);
-    img.drawPixel(8, 8, lt_gray);
 
     _ = c.SDL_Init(c.SDL_INIT_EVERYTHING);
 
@@ -80,44 +60,7 @@ pub fn main() !void {
             }
         }
 
-        // Game logic
-        {
-            if (game_input.is_down(.left))
-                ralsei_x -= 1;
-            if (game_input.is_down(.right))
-                ralsei_x += 1;
-            if (game_input.is_down(.up))
-                ralsei_y -= 1;
-            if (game_input.is_down(.down))
-                ralsei_y += 1;
-        }
-
-        var loops: usize = 1;
-        while (loops > 0) : (loops -= 1) {
-            img.drawClear(dk_gray);
-
-            const tt = time;
-            var y: i32 = 0;
-            while (y < img.height) : (y += 1) {
-                var x: i32 = 0;
-                while (x < img.width) : (x += 1) {
-                    var p = @divTrunc(x + tt, @as(i32, 8)) + @divTrunc(y + tt, @as(i32, 8));
-                    if (@mod(p, 2) == 0) {
-                        const col = switch (@mod(@divTrunc(p, 2), 3)) {
-                            0 => red,
-                            1 => blue,
-                            2 => green,
-                            else => unreachable,
-                        };
-                        img.drawPixelFast(x, y, col);
-                    }
-                }
-            }
-
-            img.drawImageRect(ralsei_x, ralsei_y, partyred_ralsei, partyred_ralsei.getRect(), .{});
-        }
-
-        _ = c.SDL_UpdateTexture(tex, null, @ptrCast([*c]u8, img.pixels.ptr), 320 * 4);
+        //_ = c.SDL_UpdateTexture(tex, null, @ptrCast([*c]u8, img.pixels.ptr), 320 * 4);
         _ = c.SDL_RenderCopy(rend, tex, null, &c.SDL_Rect{ .x = 0, .y = 0, .w = windWidth * zoom, .h = windHeight * zoom });
         _ = c.SDL_RenderPresent(rend);
 
