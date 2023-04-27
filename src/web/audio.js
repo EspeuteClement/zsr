@@ -40,7 +40,7 @@ class MyAudioProcessor extends AudioWorkletProcessor {
 				if (self.playSound != null) {
 					self.playSound(e.data);
 				} else {
-					console.log("Cant play sound");
+					console.log("Cant play sound " + e.data);
 				}
 			};
 
@@ -49,7 +49,7 @@ class MyAudioProcessor extends AudioWorkletProcessor {
 					obj.instance.exports.init(sampleRate);
 					this.gen_samples = obj.instance.exports.gen_samples;
 					self.playSound = obj.instance.exports.playSound;
-					console.log(obj.instance.exports);
+					self.port.postMessage("ok");
 				}
 			);
 		}

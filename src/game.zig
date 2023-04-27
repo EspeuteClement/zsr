@@ -18,6 +18,8 @@ pub fn init(alloc: std.mem.Allocator) void {
     allocator = alloc;
     img = sw.Image.init(allocator, windWidth, windHeight) catch unreachable;
     ralsei = stbi.load_from_memory_to_Image(@embedFile("web/ben_shmark.png"), allocator) catch @panic("aaa");
+
+    playSound(.music);
 }
 
 var time: f32 = 0.0;

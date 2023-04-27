@@ -4,6 +4,7 @@ const input = @import("input.zig");
 const stbi = @import("stb_image.zig");
 const audio = @import("audio.zig");
 const game = @import("game.zig");
+const Sound = @import("sounds.zig").Sound;
 
 const c = @cImport({
     @cInclude("SDL.h");
@@ -20,6 +21,14 @@ pub fn sdl_audio_callback(_: ?*anyopaque, data: [*c]u8, len: c_int) callconv(.C)
         o.* = i;
     }
 }
+
+pub fn playSoundCb(snd: Sound) void {
+    c.SDL_LockAudioDevice(audio_device);
+    audio.state.playSound(snd);
+    c.SDL_UnlockAudioDevice(audio_device);
+}
+
+var audio_device: c.SDL_AudioDeviceID = undefined;
 
 pub fn main() !void {
     var gpa = std.heap.GeneralPurposeAllocator(.{}){};
@@ -45,7 +54,7 @@ pub fn main() !void {
     var timer = try std.time.Timer.start();
 
     const wanted_audiospec = c.SDL_AudioSpec{
-        .freq = 48000,
+        .freq = 44100,
         .format = c.AUDIO_F32,
         .silence = 0,
         .channels = 2,
@@ -58,7 +67,7 @@ pub fn main() !void {
 
     var got_audiospec: c.SDL_AudioSpec = undefined;
 
-    var audio_device = c.SDL_OpenAudioDevice(
+    audio_device = c.SDL_OpenAudioDevice(
         null,
         @boolToInt(false),
         &wanted_audiospec,
@@ -69,6 +78,7 @@ pub fn main() !void {
     if (audio_device == 0) return error.AudioInitFailed;
 
     audio.init(wanted_audiospec.freq, allocator);
+    game.playSoundCb = playSoundCb;
     game.init(allocator);
 
     c.SDL_PauseAudioDevice(audio_device, 0);

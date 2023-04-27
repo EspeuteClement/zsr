@@ -6,24 +6,29 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Document</title>
 </head>
-<body>
-    hello world
+<body style="display: flex; align-items: center; justify-content: center; margin: 0; padding: 0;">
+    <div style="display: inline-block; position: relative; margin: 0; padding: 0;">
+        <canvas id="canvas" width=256 height=256 style="outline: 1px #777 solid; cursor: pointer; width: 512px; height: 512px; image-rendering: pixelated;"></canvas>
+        <div id="click-to-play" style="position: absolute; top: 50%; left: 50%; transform: translate(-50%,-50%); font-family: Georgia, 'Times New Roman', Times, serif; pointer-events: none;">--- Click to start ---</div>
+    </div>
 
-    <canvas id="canvas" width=256 height=256>
-
-    </canvas>
 
     <script>
 
 		let audioContext = null;
 		let worklet = null;
+        let stepFunction = null;
+        let click = document.getElementById("click-to-play");
+        let init = false;
+        let initFunction = null;
+        let engineAudioReady = false;
+        let clicked = false;
 
 		async function createProcessor() {
 			if (!audioContext) {
 				try {
-					audioContext = new AudioContext();
+					audioContext = new AudioContext({sampleRate: 44100});
 					await audioContext.audioWorklet.addModule("audio.js");
-					await audioContext.resume();
 				}
 				catch (e) {
 					console.log(e);
@@ -42,9 +47,18 @@
 
             node.port.postMessage(buff, [buff]);
             node.port.onmessage = (e) => {
-                var string = new TextDecoder('utf8').decode(e.data);
-                console.log(string);
+                if (e.data === "ok") {
+                    engineAudioReady = true;
+                }
+                else {
+                    var string = new TextDecoder('utf8').decode(e.data);
+                    console.log(string);
+                }
             };
+
+			await audioContext.resume();
+
+            //await delay(5);
             return node;
 		}
 
@@ -64,16 +78,19 @@
                 const element = keyMap[index];
                 if (e.keyCode === element) {
                     keys[index] = 1;
+                    e.preventDefault();
                     break;
                 }
             }
         }
 
         function keyUpHandler(e) {
+            
             for (let index = 0; index < keyMap.length; index++) {
                 const element = keyMap[index];
                 if (e.keyCode === element) {
                     keys[index] = 0;
+                    e.preventDefault();
                     break;
                 }
             }
@@ -121,36 +138,51 @@
             },
         };
 
-        WebAssembly.instantiateStreaming(fetch('lib/module.wasm'), importObject).then(
-            obj => {
-                obj.instance.exports.init();
-
-                const step = obj.instance.exports.step;
-                function s(t) {
-                    step(0);
-                    window.requestAnimationFrame(s);
-                }
-
-                s(0);
-            }
-        );
-
-		canvas.addEventListener("click", () => {
-			console.log("start");
+        canvas.addEventListener("click", () => {
 			audioContext.resume();
+            clicked = true;
 		});
 
 		let newProcessorNode = createProcessor();
 		newProcessorNode.then( obj => {
-			worklet = obj;
-			console.log("yay");
-			const soundSource = new OscillatorNode(audioContext);
+            const soundSource = new OscillatorNode(audioContext);
 			soundSource.connect(obj).connect(audioContext.destination);
 			soundSource.start();
-			playSound(0);
-			//boj.disabled = false;
-			//obj.connect(audioContext.destination, 2);
+			worklet = obj;
 		});
+
+        WebAssembly.instantiateStreaming(fetch('lib/module.wasm'), importObject).then(
+            obj => {
+                initFunction = obj.instance.exports.init;
+                stepFunction = obj.instance.exports.step;
+            }
+        );
+
+        let totaltime = 0;
+        function mainLoop(time) {
+            totaltime = time;
+            if (stepFunction !== null && worklet !== null && engineAudioReady && clicked) {
+                click.style.visibility = "collapse";
+                
+                if (!init) {
+                    initFunction();
+                    init = true;
+                }
+                stepFunction(0);
+            }
+            else if (clicked) {
+                click.style.visibility = "initial";
+                click.innerText = "Donwloading game ";
+                var num = Math.floor((totaltime / 500.0) % 3) + 1;
+                for (let i = 0; i < num; i++) {
+                    click.innerText += " .";
+                }
+            }
+            window.requestAnimationFrame(mainLoop);
+        }
+
+        window.requestAnimationFrame(mainLoop);
+
     </script>
 </body>
 </html>

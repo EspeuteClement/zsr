@@ -21,7 +21,10 @@ pub fn build(b: *std.build.Builder) void {
         });
         configure(b, exe);
 
+        exe.addCSourceFile("libs/dr_wav/dr_mp3.c", &.{});
         exe.addCSourceFile("libs/dr_wav/dr_wav.c", &.{});
+        //exe.addCSourceFile("libs/stb/stb_vorbis.c", &.{ "-std=c89", "-Wno-int-conversion", "-Wno-macro-redefined" });
+        exe.linkLibC();
         exe.addCSourceFile("libs/pocketmod/pocketmod.c", &.{});
         exe.addIncludePath("libs/pocketmod/");
         exe.addIncludePath("libs/dr_wav/");
@@ -82,6 +85,7 @@ pub fn build(b: *std.build.Builder) void {
         });
         stbilib.linkLibC();
         stbilib.addCSourceFile("libs/stb/stb_image.c", &.{});
+
         stbilib.disable_sanitize_c = true;
         stbilib.disable_stack_probing = true;
         stbilib.stack_protector = false;
@@ -110,6 +114,9 @@ pub fn build(b: *std.build.Builder) void {
         });
         drwav.linkLibC();
         drwav.addCSourceFile("libs/dr_wav/dr_wav.c", &.{});
+        drwav.addCSourceFile("libs/dr_wav/dr_mp3.c", &.{});
+        //drwav.addCSourceFile("libs/stb/stb_vorbis.c", &.{ "-Wno-int-conversion", "-Wno-macro-redefined", "-Wno-conditional-type-mismatch" });
+
         drwav.disable_sanitize_c = true;
         drwav.disable_stack_probing = true;
         drwav.stack_protector = false;
@@ -122,6 +129,8 @@ pub fn build(b: *std.build.Builder) void {
         web_audio.stack_protector = false;
         web_audio.disable_sanitize_c = true;
         web_audio.disable_stack_probing = true;
+        web_audio.addIncludePath("libs/stb/");
+        web_audio.linkLibC();
 
         var install_html = b.addInstallFile(.{ .path = "src/web/index.html" }, "index.html");
         var install_js = b.addInstallFile(.{ .path = "src/web/audio.js" }, "audio.js");

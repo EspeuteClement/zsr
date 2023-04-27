@@ -1,9 +1,13 @@
 const std = @import("std");
 const sound = @import("sounds.zig");
 
+const oggSupport = false;
+
 const c = @cImport({
     @cInclude("pocketmod.h");
     @cInclude("dr_wav.h");
+    @cInclude("dr_mp3.h");
+    if (oggSupport) @cInclude("stb_vorbis.h");
 });
 
 var samples: []f32 = undefined;
@@ -30,6 +34,10 @@ const State = struct {
     sounds: [64]Sound = [_]Sound{.{}} ** 64,
     firstSound: usize = 0,
     pocketmod: ?c.pocketmod_context = null,
+    mp3: ?c.drmp3 = null,
+
+    vorbis_alloc: if (oggSupport) c.stb_vorbis_alloc else void = undefined,
+    ogg: if (oggSupport) ?*c.stb_vorbis else void = if (oggSupport) null else undefined,
 
     pub fn playSound(self: *Self, snd: sound.Sound) void {
         var data = soundData[@enumToInt(snd)];
@@ -37,7 +45,30 @@ const State = struct {
         switch (kind) {
             .Wav => self.playSoundWav(data),
             .Mod => self.playSoundMod(data),
+            .Mp3 => self.playSoundMp3(data),
+            .Ogg => self.playSoundOgg(data),
         }
+    }
+
+    pub fn playSoundOgg(self: *Self, data: []const u8) void {
+        if (!oggSupport) return;
+        if (self.ogg) |ogg| {
+            c.stb_vorbis_close(ogg);
+        }
+        var err: c_int = undefined;
+        self.ogg = c.stb_vorbis_open_memory(data.ptr, @intCast(c_int, data.len), &err, &state.vorbis_alloc);
+        if (self.ogg == null) @panic("Couln't play ogg");
+        _ = c.stb_vorbis_seek(self.ogg.?, 33 * 44100);
+    }
+
+    pub fn playSoundMp3(self: *Self, data: []const u8) void {
+        if (self.mp3) |*mp3| {
+            c.drmp3_uninit(mp3);
+        }
+        self.mp3 = std.mem.zeroInit(c.drmp3, .{});
+        var res = c.drmp3_init_memory(&self.mp3.?, data.ptr, data.len, null);
+        //_ = c.drmp3_seek_to_pcm_frame(&self.mp3.?, 33 * 44100);
+        if (res == 0) @panic("Couln't play mp3");
     }
 
     pub fn playSoundMod(self: *Self, data: []const u8) void {
@@ -67,12 +98,20 @@ pub fn init(rate: i32, alloc: std.mem.Allocator) void {
     allocator = alloc;
     state.rate = @intCast(usize, rate);
 
+    if (oggSupport) {
+        state.vorbis_alloc = brk: {
+            var al = allocator.alloc(u8, 200 * 1024 * 1024) catch @panic("OOM"); // ~200kbi for ogg
+            break :brk .{
+                .alloc_buffer = al.ptr,
+                .alloc_buffer_length_in_bytes = @intCast(c_int, al.len),
+            };
+        };
+    }
+
     r = random.random();
 
     samples = allocator.alloc(f32, 128 * 2) catch unreachable;
     tempBuffer = allocator.alloc(f32, 128 * 2) catch unreachable;
-
-    state.playSound(.@"test");
 }
 
 var random = std.rand.DefaultPrng.init(0);
@@ -99,6 +138,50 @@ pub fn gen_samples(numSamples: i32) []f32 {
         }
 
         mix(tempBuffer, samples);
+    }
+
+    if (state.mp3) |*mp3| {
+        var buffPos: usize = 0;
+
+        const buff = tempBuffer;
+
+        // pocketmod_render can render less samples than requested if at the end of the track
+        while (buffPos < buff.len) {
+            var subBuff = buff[buffPos..];
+
+            const numChannels = @intCast(usize, mp3.channels);
+            if (numChannels > 2) @panic("Too Many Channels");
+            var read = c.drmp3_read_pcm_frames_f32(mp3, subBuff.len / numChannels, subBuff.ptr);
+
+            buffPos += @intCast(usize, read) * numChannels;
+            // loop
+            if (buffPos < buff.len) {
+                _ = c.drmp3_seek_to_pcm_frame(mp3, 1024);
+            }
+        }
+        mix(tempBuffer, samples);
+    }
+
+    if (oggSupport) {
+        if (state.ogg) |ogg| {
+            var buffPos: usize = 0;
+
+            const buff = tempBuffer;
+
+            // pocketmod_render can render less samples than requested if at the end of the track
+            while (buffPos < buff.len) {
+                var subBuff = buff[buffPos..];
+
+                var read = c.stb_vorbis_get_samples_float_interleaved(ogg, 2, subBuff.ptr, @intCast(c_int, subBuff.len));
+
+                buffPos += @intCast(usize, read) * 2;
+                // loop
+                if (buffPos < buff.len) {
+                    _ = c.stb_vorbis_seek_start(ogg);
+                }
+            }
+            mix(tempBuffer, samples);
+        }
     }
 
     {
