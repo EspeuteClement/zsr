@@ -115,7 +115,7 @@ pub fn build(b: *std.build.Builder) void {
         drwav.stack_protector = false;
 
         web_audio.addCSourceFile("libs/pocketmod/pocketmod.c", &.{});
-        web_audio.export_symbol_names = &[_][]const u8{ "init", "gen_samples" };
+        web_audio.export_symbol_names = &[_][]const u8{ "init", "gen_samples", "playSound" };
         web_audio.import_memory = true;
         web_audio.strip = false;
         web_audio.linkLibrary(drwav);

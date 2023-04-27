@@ -10,6 +10,8 @@ class MyAudioProcessor extends AudioWorkletProcessor {
 
 		this.gen_samples = null;
 		this.memory = new WebAssembly.Memory({initial:100});
+		this.playSound = null;
+		var self = this;
 
 		var mem = this.memory;
 		console.log(mem);
@@ -21,7 +23,7 @@ class MyAudioProcessor extends AudioWorkletProcessor {
 			var copy = new ArrayBuffer(bytes.byteLength);
 			new Uint8Array(copy).set(bytes);
 			port.postMessage(copy, [copy]);
-		}		
+		}
 
 		this.port.onmessage = (e) => {
 
@@ -34,12 +36,20 @@ class MyAudioProcessor extends AudioWorkletProcessor {
 
 			var buffer = e.data;
 
+			self.port.onmessage = (e) => {
+				if (self.playSound != null) {
+					self.playSound(e.data);
+				} else {
+					console.log("Cant play sound");
+				}
+			};
+
 			WebAssembly.instantiate(buffer, importObject).then(
 				obj => {
-					console.log(sampleRate);
 					obj.instance.exports.init(sampleRate);
-					console.log("gen_samples", obj.instance.exports.gen_samples);
 					this.gen_samples = obj.instance.exports.gen_samples;
+					self.playSound = obj.instance.exports.playSound;
+					console.log(obj.instance.exports);
 				}
 			);
 		}

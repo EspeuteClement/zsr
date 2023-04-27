@@ -1,6 +1,8 @@
 const std = @import("std");
 const callocators = @import("callocators.zig");
 const audio = @import("audio.zig");
+const sound = @import("sounds.zig");
+
 
 pub const std_options = struct {
     // Define logFn to override the std implementation
@@ -41,4 +43,8 @@ pub export fn init(rate: i32) void {
 pub export fn gen_samples(numSamples: i32) i32 {
     var samples = audio.gen_samples(numSamples);
     return @intCast(i32, @ptrToInt(samples.ptr));
+}
+
+pub export fn playSound(snd : i32) void {
+	audio.state.playSound(@intToEnum(sound.Sound, snd));
 }

@@ -49,7 +49,7 @@ const State = struct {
     const Self = @This();
 };
 
-var state: State = .{};
+pub var state: State = .{};
 var allocator: std.mem.Allocator = undefined;
 
 pub fn init(rate: i32, alloc: std.mem.Allocator) void {

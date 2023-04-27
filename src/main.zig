@@ -23,7 +23,7 @@ pub fn sdl_audio_callback(_: ?*anyopaque, data: [*c]u8, len: c_int) callconv(.C)
 
 pub fn main() !void {
     var gpa = std.heap.GeneralPurposeAllocator(.{}){};
-    defer std.debug.assert(!gpa.deinit());
+    defer std.debug.assert(gpa.deinit() == .leak);
 
     var allocator = gpa.allocator();
     callocators.allocator = allocator;

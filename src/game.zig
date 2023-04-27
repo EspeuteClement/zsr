@@ -2,6 +2,7 @@ const std = @import("std");
 const sw = @import("softwareRenderer.zig");
 const stbi = @import("stb_image.zig");
 const Input = @import("input.zig").Input;
+const Sound = @import("sounds.zig").Sound;
 
 var allocator: std.mem.Allocator = undefined;
 
@@ -10,6 +11,8 @@ const windHeight = 256;
 
 pub var img: sw.Image = undefined;
 var ralsei: sw.Image = undefined;
+
+pub var playSoundCb : ?*const fn(Sound) void = null;
 
 pub fn init(alloc: std.mem.Allocator) void {
     allocator = alloc;
@@ -24,6 +27,15 @@ var ralsei_y: i32 = 0;
 
 pub var input = Input{};
 
+pub fn playSound(snd : Sound) void {
+	if (playSoundCb) |cb| {
+		cb(snd);
+	}
+	else {
+		@panic("play sound not registered");
+	}
+}
+
 pub fn step() void {
     {
         if (input.is_down(.left))
@@ -34,6 +46,8 @@ pub fn step() void {
             ralsei_y -= 1;
         if (input.is_down(.down))
             ralsei_y += 1;
+		if (input.is_just_pressed(.a))
+			playSound(.jump);
     }
 
     time += 0.016;

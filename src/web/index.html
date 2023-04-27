@@ -16,6 +16,7 @@
     <script>
 
 		let audioContext = null;
+		let worklet = null;
 
 		async function createProcessor() {
 			if (!audioContext) {
@@ -35,7 +36,7 @@
                     outputChannelCount : [2]
                 });
 
-            
+
             var data = await fetch("lib/module-audio.wasm");
             var buff = await data.arrayBuffer();
 
@@ -48,14 +49,15 @@
 		}
 
         var canvas = document.getElementById("canvas");
-        
+
         var keyMap = [
             37, // left
             39, // right
             40, // down
             38, // up
+			32, // space
         ];
-        
+
         var keys = [0,0,0,0];
         function keyDownHandler(e) {
             for (let index = 0; index < keyMap.length; index++) {
@@ -103,12 +105,19 @@
             ctx.putImageData(imageData, 0,0);
         }
 
+		function playSound(id) {
+			if (worklet != null) {
+				worklet.port.postMessage(id);
+			}
+		}
+
         var importObject = {
             env: {
                 print: print,
                 memory: memory,
                 draw: draw,
                 isKeyDown: isKeyDown,
+				playSound: playSound,
             },
         };
 
@@ -133,10 +142,12 @@
 
 		let newProcessorNode = createProcessor();
 		newProcessorNode.then( obj => {
+			worklet = obj;
 			console.log("yay");
 			const soundSource = new OscillatorNode(audioContext);
 			soundSource.connect(obj).connect(audioContext.destination);
 			soundSource.start();
+			playSound(0);
 			//boj.disabled = false;
 			//obj.connect(audioContext.destination, 2);
 		});
