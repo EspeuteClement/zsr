@@ -18,3 +18,8 @@ pub const SoundList = struct {
 };
 
 pub const Sound = std.meta.DeclEnum(SoundList);
+pub const Defs = brk: {
+	std.EnumArray(Sound, SoundDef)
+
+	
+};
