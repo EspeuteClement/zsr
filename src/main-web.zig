@@ -64,12 +64,8 @@ pub export fn init() void {
     game = Game.init(allocator, playSoundCb) catch unreachable;
 }
 
-var time: f32 = 0.0;
-
-var ralsei_x: i32 = 0;
-var ralsei_y: i32 = 0;
-
-pub export fn step() void {
+pub export fn step(time: f64) void {
+    _ = time;
     game.input.new_input_frame();
     inline for (@typeInfo(input.VirtualButton).Enum.fields) |i| {
         game.input.set_input(@intToEnum(input.VirtualButton, i.value), is_key_down(i.value));

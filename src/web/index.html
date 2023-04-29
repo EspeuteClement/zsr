@@ -8,7 +8,7 @@
 </head>
 <body style="display: flex; align-items: center; justify-content: center; margin: 0; padding: 0;">
     <div style="display: inline-block; position: relative; margin: 0; padding: 0;">
-        <canvas id="canvas" width=256 height=256 style="outline: 1px #777 solid; cursor: pointer; width: 512px; height: 512px; image-rendering: pixelated;"></canvas>
+        <canvas id="canvas" width=240 height=160 style="outline: 1px #777 solid; cursor: pointer; width: 480px; height: 320px; image-rendering: pixelated;"></canvas>
         <div id="click-to-play" style="position: absolute; top: 50%; left: 50%; transform: translate(-50%,-50%); font-family: Georgia, 'Times New Roman', Times, serif; pointer-events: none;">--- Click to start ---</div>
     </div>
 
@@ -101,7 +101,7 @@
 
 
         const ctx = canvas.getContext("2d");
-        var imageData = ctx.getImageData(0, 0, 256, 256);
+        var imageData = ctx.getImageData(0, 0, 240, 160);
 
         var memory = new WebAssembly.Memory({initial:100});
 
@@ -168,7 +168,7 @@
                     initFunction();
                     init = true;
                 }
-                stepFunction(0);
+                stepFunction(time);
             }
             else if (clicked) {
                 click.style.visibility = "initial";
