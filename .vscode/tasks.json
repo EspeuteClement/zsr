@@ -12,11 +12,7 @@
             "label": "web",
             "type": "shell",
             "command": "zig build web",
-            "problemMatcher": [],
-            "group": {
-                "kind": "build",
-                "isDefault": true
-            }
+            "problemMatcher": []
         },
         {
             "label": "run",
@@ -24,6 +20,16 @@
             "command": "zig build run",
             "problemMatcher": [],
             "group": "build"
+        },
+        {
+            "label": "all-run",
+            "type": "shell",
+            "command": "zig build all-run",
+            "problemMatcher": [],
+            "group": {
+                "kind": "build",
+                "isDefault": true
+            }
         }
     ]
 }

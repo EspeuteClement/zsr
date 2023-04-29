@@ -1,7 +1,7 @@
 const std = @import("std");
 const sw = @import("softwareRenderer.zig");
 const input = @import("input.zig");
-const game = @import("game.zig");
+const Game = @import("game.zig");
 const callocators = @import("callocators.zig");
 const Sound = @import("sounds.zig").Sound;
 
@@ -33,7 +33,7 @@ const Imports = struct {
     pub extern fn print(ptr: i32, length: i32) void;
     pub extern fn draw(ptr: i32, lenght: i32) void;
     pub extern fn isKeyDown(idx: i32) i32;
-	pub extern fn playSound(id : i32) void;
+    pub extern fn playSound(id: i32) void;
 };
 
 pub fn print(str: []const u8) void {
@@ -49,18 +49,19 @@ pub fn is_key_down(key: i32) bool {
     return Imports.isKeyDown(key) != 0;
 }
 
-pub fn playSoundCb(sound:Sound) void {
-	Imports.playSound(@enumToInt(sound));
+pub fn playSoundCb(sound: Sound) void {
+    Imports.playSound(@enumToInt(sound));
 }
 
 var gpa = std.heap.GeneralPurposeAllocator(.{}){};
 var allocator: std.mem.Allocator = undefined;
 
+var game: Game = undefined;
+
 pub export fn init() void {
     allocator = gpa.allocator();
     callocators.allocator = allocator;
-	game.playSoundCb = playSoundCb;
-    game.init(allocator);
+    game = Game.init(allocator, playSoundCb) catch unreachable;
 }
 
 var time: f32 = 0.0;
@@ -74,7 +75,7 @@ pub export fn step() void {
         game.input.set_input(@intToEnum(input.VirtualButton, i.value), is_key_down(i.value));
     }
 
-    game.step();
+    game.step() catch unreachable;
 
     draw(game.img);
 }

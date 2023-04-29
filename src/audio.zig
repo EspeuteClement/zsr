@@ -88,6 +88,25 @@ const State = struct {
         if (res == 0) @panic("couldn't init dr_wav");
     }
 
+    pub fn deinit(self: *Self) void {
+        if (self.mp3) |*mp3| {
+            c.drmp3_uninit(mp3);
+        }
+
+        if (oggSupport) {
+            if (self.ogg) |ogg| {
+                c.stb_vorbis_close(ogg);
+            }
+        }
+
+        for (&self.sounds) |*snd| {
+            if (snd.playing) {
+                var res = c.drwav_uninit(&snd.ctx);
+                if (res != 0) @panic("wtf");
+            }
+        }
+    }
+
     const Self = @This();
 };
 
@@ -112,6 +131,12 @@ pub fn init(rate: i32, alloc: std.mem.Allocator) void {
 
     samples = allocator.alloc(f32, 128 * 2) catch unreachable;
     tempBuffer = allocator.alloc(f32, 128 * 2) catch unreachable;
+}
+
+pub fn deinit() void {
+    state.deinit();
+    allocator.free(samples);
+    allocator.free(tempBuffer);
 }
 
 var random = std.rand.DefaultPrng.init(0);

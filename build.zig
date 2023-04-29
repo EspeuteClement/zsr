@@ -12,10 +12,10 @@ pub fn build(b: *std.build.Builder) void {
     // between Debug, ReleaseSafe, ReleaseFast, and ReleaseSmall.
     const optimize = b.standardOptimizeOption(.{});
 
-    {
+    const exe = brk: {
         const exe = b.addExecutable(.{
             .name = "zsr",
-            .root_source_file = .{ .path = "src/main.zig" },
+            .root_source_file = .{ .path = "src/main-sdl.zig" },
             .target = target,
             .optimize = optimize,
         });
@@ -51,7 +51,8 @@ pub fn build(b: *std.build.Builder) void {
 
         const run_step = b.step("run", "Run the app");
         run_step.dependOn(&run_cmd.step);
-    }
+        break :brk .{ .build_exe = build_exe_step, .exe = exe };
+    };
 
     // Tests
     {
@@ -68,7 +69,7 @@ pub fn build(b: *std.build.Builder) void {
     }
 
     // Web build
-    {
+    const web_build = brk: {
         const web = b.addSharedLibrary(.{
             .name = "module",
             .root_source_file = .{ .path = "src/main-web.zig" },
@@ -142,6 +143,24 @@ pub fn build(b: *std.build.Builder) void {
         web_build.dependOn(&install_html.step);
         web_build.dependOn(&install_js.step);
         web_build.dependOn(&install_module_audio.step);
+
+        break :brk web_build;
+    };
+
+    {
+        var all = b.step("all", "Build all target, then run desktop target");
+        all.dependOn(web_build);
+        all.dependOn(exe.build_exe);
+
+        var all_run = b.step("all-run", "Build all target, then run desktop target");
+
+        const run_cmd = b.addRunArtifact(exe.exe);
+        run_cmd.step.dependOn(all);
+        if (b.args) |args| {
+            run_cmd.addArgs(args);
+        }
+
+        all_run.dependOn(&run_cmd.step);
     }
 
     // {
