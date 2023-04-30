@@ -42,12 +42,16 @@ pub const Image = struct {
     width: i32,
     height: i32,
     pixels: []Color,
+    camera_x: i32,
+    camera_y: i32,
 
     pub fn init(alloc: std.mem.Allocator, width: i32, height: i32) !Image {
         return .{
             .width = width,
             .height = height,
             .pixels = try alloc.alloc(Color, @intCast(usize, width * height)),
+            .camera_x = 0,
+            .camera_y = 0,
         };
     }
 
@@ -120,10 +124,10 @@ pub const Image = struct {
     }
 
     pub fn drawRect(dest: Image, dest_x: i32, dest_y: i32, width: i32, height: i32, color: Color) void {
-        const start_x = @max(0, dest_x);
-        var y = @max(0, dest_y);
-        const end_x = @min(dest_x + width, dest.width);
-        const end_y = @min(dest_y + height, dest.height);
+        const start_x = @max(0, dest_x - dest.camera_x);
+        var y = @max(0, dest_y - dest.camera_y);
+        const end_x = @min(dest_x + width - dest.camera_x, dest.width);
+        const end_y = @min(dest_y + height - dest.camera_y, dest.height);
 
         while (y < end_y) : (y += 1) {
             var x = start_x;

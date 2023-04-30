@@ -1,0 +1,10 @@
+{
+    "count": 16,
+    "initial_speed": 2.0,
+    "lifetime": 3.0,
+    "vw": -0.05,
+    "vh": -0.05,
+    "vx": 3.0,
+    "ax": -0.05,
+    "damping": 0.97
+}

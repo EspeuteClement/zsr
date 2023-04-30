@@ -19,17 +19,17 @@
             "type": "shell",
             "command": "zig build run",
             "problemMatcher": [],
-            "group": "build"
+            "group": {
+                "kind": "build",
+                "isDefault": true
+            }
         },
         {
             "label": "all-run",
             "type": "shell",
             "command": "zig build all-run",
             "problemMatcher": [],
-            "group": {
-                "kind": "build",
-                "isDefault": true
-            }
+            "group": "build"
         }
     ]
 }

@@ -64,14 +64,50 @@ pub export fn init() void {
     game = Game.init(allocator, playSoundCb) catch unreachable;
 }
 
-pub export fn step(time: f64) void {
-    _ = time;
+var time: f64 = 0.0;
+var accumulator: f64 = 0;
+var _error: f64 = 0;
+
+pub export fn step(time2: f64) void {
+    var delta = time2 - time;
+    time = time2;
+
+    var deltaS = delta / 1_000.0;
+
+    const timeEpsilon = 0.0009;
+
+    if (std.math.fabs(deltaS - 1.0 / 60.0) < timeEpsilon) {
+        _error += deltaS - 1.0 / 60.0;
+        deltaS = 1.0 / 60.0;
+    } else if (std.math.fabs(deltaS - 1.0 / 30.0) < timeEpsilon) {
+        _error += deltaS - 1.0 / 30.0;
+        deltaS = 1.0 / 30.0;
+    } else {
+        //std.log.warn("Delta ouside of epsilon : {d:0<6.4}. Accumulator : {d:0<6.4}", .{ deltaS, accumulator });
+    }
+    //std.log.info("Error is : {d:0<4.4}ms. Accumulator : {d:0<6.4}ms. ", .{ _error * 1000.0, accumulator * 1000.0 });
+
+    accumulator += deltaS;
+
+    var updatesThisLoop: u32 = 0;
+
     game.input.new_input_frame();
     inline for (@typeInfo(input.VirtualButton).Enum.fields) |i| {
         game.input.set_input(@intToEnum(input.VirtualButton, i.value), is_key_down(i.value));
     }
 
-    game.step() catch unreachable;
+    // Stable 60fps loop
+    while (accumulator >= 1.0 / 60.0) {
+        if (std.math.fabs(_error) > 1.0 / 60.0) {
+            std.log.warn("Error too big, skipping a frame : {d:0<4.4}", .{_error});
+            _error -= std.math.sign(_error) * 1.0 / 60.0;
+        } else {
+            game.step() catch unreachable;
+            draw(game.img);
+        }
 
-    draw(game.img);
+        updatesThisLoop += 1;
+
+        accumulator -= 1.0 / 60.0;
+    }
 }

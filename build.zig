@@ -21,6 +21,17 @@ pub fn build(b: *std.build.Builder) void {
         });
         configure(b, exe);
 
+        var opt = b.addOptions();
+
+        var embed_structs = optimize != .Debug;
+
+        opt.addOption(bool, "embed_structs", embed_structs);
+
+        const src_path = comptime (std.fs.path.dirname(@src().file) orelse ".") ++ "/src/";
+        opt.addOption([]const u8, "src_path", src_path);
+
+        exe.addOptions("options", opt);
+
         exe.addCSourceFile("libs/dr_wav/dr_mp3.c", &.{});
         exe.addCSourceFile("libs/dr_wav/dr_wav.c", &.{});
         //exe.addCSourceFile("libs/stb/stb_vorbis.c", &.{ "-std=c89", "-Wno-int-conversion", "-Wno-macro-redefined" });
@@ -98,6 +109,10 @@ pub fn build(b: *std.build.Builder) void {
         web.export_symbol_names = &[_][]const u8{ "init", "step" };
         web.import_memory = true;
         web.strip = true;
+
+        var opt = b.addOptions();
+        opt.addOption(bool, "embed_structs", false);
+        web.addOptions("options", opt);
 
         const web_audio = b.addSharedLibrary(.{
             .name = "module-audio",

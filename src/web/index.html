@@ -159,16 +159,18 @@
         );
 
         let totaltime = 0;
+        let startTime = 0;
         function mainLoop(time) {
             totaltime = time;
             if (stepFunction !== null && worklet !== null && engineAudioReady && clicked) {
                 click.style.visibility = "collapse";
                 
                 if (!init) {
+                    startTime = time;
                     initFunction();
                     init = true;
                 }
-                stepFunction(time);
+                stepFunction(time-startTime);
             }
             else if (clicked) {
                 click.style.visibility = "initial";
