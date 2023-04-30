@@ -21,8 +21,8 @@ fx_file_map: if (options.embed_structs) void else std.StringArrayHashMapUnmanage
 const ResourceInfo = struct {
     last_edit_time: i128,
     data: *const anyopaque,
-    original_data: *const anyopaque = undefined,
-    cleanup_func: *const fn (self2: *Self, res: *ResourceInfo) void = undefined,
+    original_data: *const anyopaque,
+    cleanup_func: *const fn (self2: *Self, res: *ResourceInfo) void,
 };
 
 pub const game_width = 240;
@@ -326,61 +326,64 @@ pub fn loadJsonResource(self: *Self, comptime path: []const u8, comptime T: type
     if (comptime options.embed_structs) {
         return .{ .was_reloaded = false, .fx = comptime loadJsonResourceComptime(path, T) };
     } else {
-        var info = self.fx_file_map.getOrPut(self.allocator, path) catch unreachable;
-        if (!info.found_existing) {
-            const ctx = struct {
+        var insert_result = self.fx_file_map.getOrPut(self.allocator, path) catch unreachable;
+        var res_info = insert_result.value_ptr;
+        if (!insert_result.found_existing) {
+            const CleanupCtx = struct {
                 pub fn cleanup(self2: *Self, res: *ResourceInfo) void {
                     if (res.original_data != res.data) {
                         const non_const_typed_ptr = ptrCast(*T, @constCast(res.data));
                         self2.allocator.destroy(non_const_typed_ptr);
-                        std.log.info("freed ptr", .{});
                     }
                 }
             };
 
-            info.value_ptr.* = .{
+            const data = &(comptime loadJsonResourceComptime(path, T));
+            res_info.* = .{
                 .last_edit_time = 0,
-                .data = &(comptime loadJsonResourceComptime(path, T)),
-                .cleanup_func = ctx.cleanup,
+                .data = data,
+                .cleanup_func = CleanupCtx.cleanup,
+                .original_data = data,
             };
-            info.value_ptr.original_data = info.value_ptr.data;
         }
-        var fx: **const anyopaque = &info.value_ptr.data;
+        var fx: **const anyopaque = &res_info.data;
         var defreturn: T = constPtrCast(*const T, fx.*).*;
-        var buff: [512]u8 = undefined;
-        var full_path = std.fmt.bufPrintZ(&buff, "{s}{s}", .{ options.src_path, path }) catch return .{ .was_reloaded = false, .fx = defreturn };
-        var file = std.fs.openFileAbsoluteZ(full_path, .{}) catch return .{ .was_reloaded = false, .fx = defreturn };
+
+        var file = brk: {
+            var buff: [512]u8 = undefined;
+            var full_path = std.fmt.bufPrintZ(&buff, "{s}{s}", .{ options.src_path, path }) catch return .{ .was_reloaded = false, .fx = defreturn };
+            break :brk std.fs.openFileAbsoluteZ(full_path, .{}) catch return .{ .was_reloaded = false, .fx = defreturn };
+        };
         defer file.close();
 
         var stat = file.stat() catch return .{ .was_reloaded = false, .fx = defreturn };
 
-        if (stat.mtime <= info.value_ptr.last_edit_time)
+        if (stat.mtime <= res_info.last_edit_time)
             return .{ .was_reloaded = false, .fx = defreturn };
 
         var data = file.readToEndAlloc(self.allocator, 100_000) catch return .{ .was_reloaded = false, .fx = defreturn };
         defer self.allocator.free(data);
 
-        info.value_ptr.last_edit_time = stat.mtime;
-
-        var s = std.json.TokenStream.init(data);
+        res_info.last_edit_time = stat.mtime;
 
         var newPtr = brk: {
+            var json_stream = std.json.TokenStream.init(data);
+
             var res = self.allocator.create(T) catch return .{ .was_reloaded = false, .fx = defreturn };
-            std.log.info("created ptr", .{});
             var success = false;
             defer {
                 if (!success) {
                     self.allocator.destroy(res);
-                    std.log.info("freed ptr because of error", .{});
                 }
             }
-            res.* = std.json.parse(T, &s, .{ .allow_trailing_data = true }) catch return .{ .was_reloaded = false, .fx = defreturn };
+            res.* = std.json.parse(T, &json_stream, .{ .allow_trailing_data = true }) catch return .{ .was_reloaded = false, .fx = defreturn };
 
             success = true;
             break :brk res;
         };
-        info.value_ptr.cleanup_func(self, info.value_ptr);
-        info.value_ptr.data = newPtr;
+
+        res_info.cleanup_func(self, res_info);
+        res_info.data = newPtr;
 
         return .{ .was_reloaded = true, .fx = constPtrCast(*const T, fx.*).* };
     }
