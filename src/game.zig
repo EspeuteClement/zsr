@@ -16,14 +16,13 @@ state: State = undefined,
 
 playSoundCb: ?*const fn (Sound) void = null,
 
-fx_file_map: if (options.embed_structs) void else std.StringArrayHashMapUnmanaged(FXInfo) = if (options.embed_structs) undefined else .{},
+fx_file_map: if (options.embed_structs) void else std.StringArrayHashMapUnmanaged(ResourceInfo) = if (options.embed_structs) undefined else .{},
 
-const FXInfo = struct {
+const ResourceInfo = struct {
     last_edit_time: i128,
     data: *const anyopaque,
     original_data: *const anyopaque = undefined,
-    data_size: usize,
-    data_alignment_log2: u8,
+    cleanup_func: *const fn (self2: *Self, res: *ResourceInfo) void = undefined,
 };
 
 pub const game_width = 240;
@@ -38,6 +37,21 @@ const Self = @This();
 
 const Foo = struct {
     bar: f32 = 0,
+};
+
+const Tiled = struct {
+    const Layer = struct {
+        name: []const u8,
+        objects: []const Object,
+
+        const Object = struct {
+            height: i32,
+            width: i32,
+            visible: bool,
+            x: i32,
+            y: i32,
+        };
+    };
 };
 
 const State = struct {
@@ -247,12 +261,7 @@ pub fn deinit(self: *Self) void {
     if (comptime !options.embed_structs) {
         var it = self.fx_file_map.iterator();
         while (it.next()) |kv| {
-            if (kv.value_ptr.original_data != kv.value_ptr.data) {
-                const non_const_ptr = @ptrCast([*]u8, @constCast(kv.value_ptr.data));
-
-                // Because we can't recosntrucuct the type at runtime, we call RawFree with the relevant information
-                self.allocator.rawFree(non_const_ptr[0..kv.value_ptr.data_size], kv.value_ptr.data_alignment_log2, @returnAddress());
-            }
+            kv.value_ptr.cleanup_func(self, kv.value_ptr);
         }
 
         self.fx_file_map.deinit(self.allocator);
@@ -295,14 +304,6 @@ pub fn absmax(a: anytype, b: anytype) @TypeOf(a, b) {
     return b;
 }
 
-pub fn loadFXComptime(comptime path: []const u8, comptime T: type) T {
-    comptime {
-        var s = std.json.TokenStream.init(@embedFile(path));
-        const res = std.json.parse(T, &s, .{ .allow_trailing_data = true }) catch @compileError("Couldn't parse FX of type " ++ T ++ " from " ++ path);
-        return res;
-    }
-}
-
 inline fn ptrCast(comptime T: type, ptr: *anyopaque) T {
     return @ptrCast(T, @alignCast(@alignOf(@typeInfo(T).Pointer.child), ptr));
 }
@@ -311,19 +312,36 @@ inline fn constPtrCast(comptime T: type, ptr: *const anyopaque) T {
     return @ptrCast(T, @alignCast(@alignOf(@typeInfo(T).Pointer.child), ptr));
 }
 
-pub fn loadFX(self: *Self, comptime path: []const u8, comptime T: type) struct { was_reloaded: bool, fx: T } {
+pub fn loadJsonResourceComptime(comptime path: []const u8, comptime T: type) T {
+    comptime {
+        var s = std.json.TokenStream.init(@embedFile(path));
+        const res = std.json.parse(T, &s, .{ .allow_trailing_data = true }) catch @compileError("Couldn't parse FX of type " ++ T ++ " from " ++ path);
+        return res;
+    }
+}
+
+pub fn loadJsonResource(self: *Self, comptime path: []const u8, comptime T: type) struct { was_reloaded: bool, fx: T } {
     @setEvalBranchQuota(20_000);
 
     if (comptime options.embed_structs) {
-        return .{ .was_reloaded = false, .fx = comptime loadFXComptime(path, T) };
+        return .{ .was_reloaded = false, .fx = comptime loadJsonResourceComptime(path, T) };
     } else {
         var info = self.fx_file_map.getOrPut(self.allocator, path) catch unreachable;
         if (!info.found_existing) {
+            const ctx = struct {
+                pub fn cleanup(self2: *Self, res: *ResourceInfo) void {
+                    if (res.original_data != res.data) {
+                        const non_const_typed_ptr = ptrCast(*T, @constCast(res.data));
+                        self2.allocator.destroy(non_const_typed_ptr);
+                        std.log.info("freed ptr", .{});
+                    }
+                }
+            };
+
             info.value_ptr.* = .{
                 .last_edit_time = 0,
-                .data = &(comptime loadFXComptime(path, T)),
-                .data_size = @sizeOf(T),
-                .data_alignment_log2 = std.math.log2(@alignOf(T)),
+                .data = &(comptime loadJsonResourceComptime(path, T)),
+                .cleanup_func = ctx.cleanup,
             };
             info.value_ptr.original_data = info.value_ptr.data;
         }
@@ -342,19 +360,28 @@ pub fn loadFX(self: *Self, comptime path: []const u8, comptime T: type) struct {
         var data = file.readToEndAlloc(self.allocator, 100_000) catch return .{ .was_reloaded = false, .fx = defreturn };
         defer self.allocator.free(data);
 
+        info.value_ptr.last_edit_time = stat.mtime;
+
         var s = std.json.TokenStream.init(data);
 
-        var oldptr = constPtrCast(*const T, fx.*);
-        fx.* = brk: {
+        var newPtr = brk: {
             var res = self.allocator.create(T) catch return .{ .was_reloaded = false, .fx = defreturn };
-            errdefer self.allocator.destroy(res);
+            std.log.info("created ptr", .{});
+            var success = false;
+            defer {
+                if (!success) {
+                    self.allocator.destroy(res);
+                    std.log.info("freed ptr because of error", .{});
+                }
+            }
             res.* = std.json.parse(T, &s, .{ .allow_trailing_data = true }) catch return .{ .was_reloaded = false, .fx = defreturn };
+
+            success = true;
             break :brk res;
         };
-        info.value_ptr.last_edit_time = stat.mtime;
-        if (constPtrCast(*const T, info.value_ptr.original_data) != oldptr) {
-            self.allocator.destroy(oldptr);
-        }
+        info.value_ptr.cleanup_func(self, info.value_ptr);
+        info.value_ptr.data = newPtr;
+
         return .{ .was_reloaded = true, .fx = constPtrCast(*const T, fx.*).* };
     }
 }
@@ -363,7 +390,7 @@ pub fn step(self: *Self) !void {
     var s = &self.state;
 
     if (comptime !options.embed_structs) {
-        if (self.loadFX("res/part.json", State.ParticleParams).was_reloaded) {
+        if (self.loadJsonResource("res/part.json", State.ParticleParams).was_reloaded) {
             s.deinit();
             self.reset();
         }
@@ -386,7 +413,7 @@ pub fn step(self: *Self) !void {
             if (collide_after) {
                 s.game_over = true;
                 std.log.info("Game over", .{});
-                var fx = self.loadFX("res/part.json", State.ParticleParams).fx;
+                var fx = self.loadJsonResource("res/part.json", State.ParticleParams).fx;
                 fx.ox = s.player_x;
                 fx.oy = s.player_y;
 
