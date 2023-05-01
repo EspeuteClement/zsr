@@ -167,10 +167,13 @@
                 
                 if (!init) {
                     startTime = time;
-                    initFunction();
+                    initFunction(Date.now());
                     init = true;
                 }
+                var start = performance.now();
                 stepFunction(time-startTime);
+                var end = performance.now();
+                console.log("Step time : " + (end - start).toFixed(4) + "ms");
             }
             else if (clicked) {
                 click.style.visibility = "initial";

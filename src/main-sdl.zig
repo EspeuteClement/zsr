@@ -85,7 +85,9 @@ pub fn main() !void {
     audio.init(wanted_audiospec.freq, allocator);
     defer audio.deinit();
 
-    var game = try Game.init(allocator, playSoundCb);
+    var seed = @bitCast(u64, std.time.timestamp());
+
+    var game = try Game.init(allocator, playSoundCb, seed);
     defer game.deinit();
 
     c.SDL_PauseAudioDevice(audio_device, 0);
@@ -141,7 +143,10 @@ pub fn main() !void {
                     }
                 }
 
+                var timer = std.time.Timer.start() catch unreachable;
                 try game.step();
+                var step_time = @intToFloat(f64, timer.read());
+                std.debug.print("step : {d:0>6}ms\n", .{step_time / std.time.ns_per_ms});
             }
 
             updatesThisLoop += 1;

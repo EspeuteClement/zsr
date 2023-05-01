@@ -1,0 +1,34 @@
+{
+    "automappingRulesFile": "",
+    "commands": [
+    ],
+    "compatibilityVersion": 1100,
+    "extensionsPath": "extensions",
+    "folders": [
+        "."
+    ],
+    "propertyTypes": [
+        {
+            "color": "#ff6464a4",
+            "drawFill": true,
+            "id": 1,
+            "members": [
+                {
+                    "name": "vx",
+                    "type": "float",
+                    "value": 0
+                },
+                {
+                    "name": "vy",
+                    "type": "float",
+                    "value": 42
+                }
+            ],
+            "name": "Block",
+            "type": "class",
+            "useAs": [
+                "object"
+            ]
+        }
+    ]
+}

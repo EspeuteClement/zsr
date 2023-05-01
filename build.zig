@@ -111,7 +111,7 @@ pub fn build(b: *std.build.Builder) void {
         web.strip = true;
 
         var opt = b.addOptions();
-        opt.addOption(bool, "embed_structs", false);
+        opt.addOption(bool, "embed_structs", true);
         web.addOptions("options", opt);
 
         const web_audio = b.addSharedLibrary(.{

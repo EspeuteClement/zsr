@@ -58,10 +58,10 @@ var allocator: std.mem.Allocator = undefined;
 
 var game: Game = undefined;
 
-pub export fn init() void {
+pub export fn init(seed: i32) void {
     allocator = gpa.allocator();
     callocators.allocator = allocator;
-    game = Game.init(allocator, playSoundCb) catch unreachable;
+    game = Game.init(allocator, playSoundCb, @bitCast(u64, @as(i64, seed))) catch unreachable;
 }
 
 var time: f64 = 0.0;
@@ -70,6 +70,7 @@ var _error: f64 = 0;
 
 pub export fn step(time2: f64) void {
     var delta = time2 - time;
+    delta = @min(delta, 4.0 / 60.0 * 1000_0);
     time = time2;
 
     var deltaS = delta / 1_000.0;

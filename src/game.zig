@@ -3,26 +3,38 @@ const sw = @import("softwareRenderer.zig");
 const stbi = @import("stb_image.zig");
 const Input = @import("input.zig").Input;
 const Sound = @import("sounds.zig").Sound;
+const res = @import("resources.zig");
 const options = @import("options");
 
 img: sw.Image = undefined,
 backbuffer: sw.Image = undefined,
 
 //ralsei: sw.Image = undefined,
+sprite: sw.Image = undefined,
 allocator: std.mem.Allocator = undefined,
 input: Input = Input{},
 
 state: State = undefined,
+global_frames: u128 = undefined,
 
 playSoundCb: ?*const fn (Sound) void = null,
 
-fx_file_map: if (options.embed_structs) void else std.StringArrayHashMapUnmanaged(ResourceInfo) = if (options.embed_structs) undefined else .{},
+resource_cache: std.EnumArray(res.Resource, ?ResourceInfo) = std.EnumArray(res.Resource, ?ResourceInfo).initFill(null),
+resource_allocator: std.mem.Allocator = undefined,
 
 const ResourceInfo = struct {
     last_edit_time: i128,
     data: *const anyopaque,
-    original_data: *const anyopaque,
-    cleanup_func: *const fn (self2: *Self, res: *ResourceInfo) void,
+    cleanup_func: *const fn (self2: *Self, info: *ResourceInfo) void,
+
+    const Tag = enum {
+        static,
+        dynamic,
+    };
+    const OriginalData = union(Tag) {
+        static: *const anyopaque,
+        dynamic: std.mem.Allocator,
+    };
 };
 
 pub const game_width = 240;
@@ -30,7 +42,7 @@ pub const game_height = 160;
 
 const player_width = 8;
 const player_jump_force = -3.0;
-const player_max_speed = 6.0;
+const player_max_speed = 4.0;
 const gravity = 1.0;
 
 const Self = @This();
@@ -40,6 +52,8 @@ const Foo = struct {
 };
 
 const Tiled = struct {
+    layers: []const Layer,
+
     const Layer = struct {
         name: []const u8,
         objects: []const Object,
@@ -50,6 +64,15 @@ const Tiled = struct {
             visible: bool,
             x: i32,
             y: i32,
+
+            pub fn toBlock(self: @This(), offset_x: f32) Block {
+                return .{
+                    .x = @intToFloat(f32, self.x) + offset_x,
+                    .y = @intToFloat(f32, self.y),
+                    .w = @intToFloat(f32, self.width),
+                    .h = @intToFloat(f32, self.height),
+                };
+            }
         };
     };
 };
@@ -60,30 +83,36 @@ const State = struct {
     player_y: f32 = game_height / 2,
     player_vy: f32 = 0,
     player_gravity: f32 = 1,
+    player_can_jump: bool = false,
+
+    speed: f32 = -3.0,
 
     game_over: bool = false,
 
-    blocks: [Block.num_max]?Block = [_]?Block{null} ** Block.num_max,
+    blocks: std.ArrayListUnmanaged(Block) = .{},
 
     particles: std.ArrayListUnmanaged(Particle) = .{},
 
     fx_random: std.rand.Xoshiro256 = undefined,
+    game_random: std.rand.Xoshiro256 = undefined,
 
     scr_shake_x: f32 = 0,
     scr_shake_y: f32 = 0,
     scr_offset_x: f32 = 0,
     scr_offset_y: f32 = 0,
 
-    pub fn init(allocator: std.mem.Allocator) State {
+    pub fn init(allocator: std.mem.Allocator, seed: u64) State {
         var st = State{
             .allocator = allocator,
         };
-        st.fx_random = std.rand.Xoshiro256.init(0);
+        st.fx_random = std.rand.Xoshiro256.init(seed);
+        st.game_random = std.rand.Xoshiro256.init(seed);
         return st;
     }
 
     pub fn deinit(self: *State) void {
         self.particles.deinit(self.allocator);
+        self.blocks.deinit(self.allocator);
         self.* = undefined;
     }
 
@@ -202,9 +231,17 @@ const Block = struct {
     const num_max = 128;
 };
 
-pub fn init(alloc: std.mem.Allocator, playSoundCB: ?*const fn (Sound) void) !Self {
+pub fn init(alloc: std.mem.Allocator, playSoundCB: ?*const fn (Sound) void, seed: u64) !Self {
     var game: Self = .{};
 
+    game.sprite = sw.Image.init(alloc, 16, 16) catch unreachable;
+    for (game.sprite.pixels, 0..) |*p, i| {
+        const x: u8 = (@intCast(u8, i) % 16) * 16;
+        const y: u8 = @divTrunc(@intCast(u8, i), 16) * 16;
+        const c = x ^ y;
+        p.* = .{ .r = c, .g = c, .b = c, .a = 255 };
+    }
+    game.global_frames = seed;
     game.allocator = alloc;
     game.playSoundCb = playSoundCB;
     game.img = try sw.Image.init(alloc, game_width, game_height);
@@ -212,6 +249,10 @@ pub fn init(alloc: std.mem.Allocator, playSoundCB: ?*const fn (Sound) void) !Sel
 
     game.backbuffer = try sw.Image.init(alloc, game_width, game_height);
     errdefer .backbuffer.deinit(alloc);
+
+    game.resource_allocator = game.allocator;
+
+    _ = game.loadJsonResourceAllocate(.blocks, Tiled);
 
     //game.ralsei = try stbi.load_from_memory_to_Image(@embedFile("web/ben_shmark.png"), alloc);
     //errdefer game.img.deinit(alloc);
@@ -223,50 +264,28 @@ pub fn init(alloc: std.mem.Allocator, playSoundCB: ?*const fn (Sound) void) !Sel
 }
 
 pub fn reset(self: *Self) void {
-    self.state = State.init(self.allocator);
-    const s = &self.state;
+    self.state = State.init(self.allocator, @truncate(u64, self.global_frames));
 
-    s.blocks[0] = .{
-        .x = 0,
-        .y = game_height - 16,
-        .h = 32,
-        .w = game_width * 10,
-        .vx = -1.0,
-        .vy = 0.0,
-    };
+    self.spawnBlocks(self.getNumBlocks(), 0.0);
 
-    s.blocks[1] = .{
-        .x = 0,
-        .y = -16,
-        .h = 32,
-        .w = game_width * 10,
-        .vx = -1.0,
-        .vy = 0.0,
-    };
-
-    s.blocks[2] = .{
-        .x = 100,
-        .y = game_height - 32,
-        .h = 32,
-        .w = 32,
-        .vx = -1.0,
-        .vy = 0.0,
-    };
+    // Always spawn the first pattern as a preview when in debug mode
+    if (comptime !options.embed_structs) {
+        self.spawnBlocks(0, game_width + 16);
+    }
 }
 
 pub fn deinit(self: *Self) void {
     self.img.deinit(self.allocator);
     self.backbuffer.deinit(self.allocator);
     self.state.deinit();
-    if (comptime !options.embed_structs) {
-        var it = self.fx_file_map.iterator();
-        while (it.next()) |kv| {
-            kv.value_ptr.cleanup_func(self, kv.value_ptr);
-        }
+    {
+        for (&self.resource_cache.values) |*info_or_null| {
+            var info = &(info_or_null.* orelse continue);
 
-        self.fx_file_map.deinit(self.allocator);
+            info.cleanup_func(self, info);
+            info_or_null.* = null;
+        }
     }
-    //self.ralsei.deinit(self.allocator);
 }
 
 pub fn playSound(self: *Self, snd: Sound) void {
@@ -312,43 +331,64 @@ inline fn constPtrCast(comptime T: type, ptr: *const anyopaque) T {
     return @ptrCast(T, @alignCast(@alignOf(@typeInfo(T).Pointer.child), ptr));
 }
 
-pub fn loadJsonResourceComptime(comptime path: []const u8, comptime T: type) T {
+pub fn loadJsonResourceComptime(comptime res_id: res.Resource, comptime T: type) T {
+    @setEvalBranchQuota(20_000);
+
     comptime {
-        var s = std.json.TokenStream.init(@embedFile(path));
-        const res = std.json.parse(T, &s, .{ .allow_trailing_data = true }) catch @compileError("Couldn't parse FX of type " ++ T ++ " from " ++ path);
-        return res;
+        const path = res.defs.get(res_id).path;
+        var json_stream = std.json.TokenStream.init(@embedFile(path));
+
+        const resource = std.json.parse(T, &json_stream, .{ .allow_trailing_data = true }) catch @compileError("Couldn't parse FX of type " ++ T ++ " from " ++ path);
+        return resource;
     }
 }
 
-pub fn loadJsonResource(self: *Self, comptime path: []const u8, comptime T: type) struct { was_reloaded: bool, fx: T } {
+pub fn loadJsonResourceAllocate(self: *Self, res_id: res.Resource, comptime T: type) LoadJsonResult(T) {
     @setEvalBranchQuota(20_000);
 
+    const parse_json_params = std.json.ParseOptions{
+        .allocator = self.resource_allocator,
+        .allow_trailing_data = true,
+        .ignore_unknown_fields = true,
+    };
+
+    const path = res.defs.get(res_id).path;
+
+    var res_info_or_null = self.resource_cache.getPtr(res_id);
+    if (res_info_or_null.* == null) {
+        const CleanupCtx = struct {
+            pub fn cleanup(self2: *Self, info: *ResourceInfo) void {
+                const parse_json_params2 = std.json.ParseOptions{
+                    .allocator = self2.resource_allocator,
+                    .allow_trailing_data = true,
+                    .ignore_unknown_fields = true,
+                };
+
+                const non_const_typed_ptr = ptrCast(*T, @constCast(info.data));
+                std.json.parseFree(T, non_const_typed_ptr.*, parse_json_params2);
+                self2.allocator.destroy(non_const_typed_ptr);
+            }
+        };
+
+        var json_stream = std.json.TokenStream.init(res.data.get(res_id));
+
+        // note : we panic here because it means we couldn't load data bundled with the binary which is an error
+        const data = self.allocator.create(T) catch @panic("OOM");
+        data.* = std.json.parse(T, &json_stream, parse_json_params) catch @panic("Parse error");
+        res_info_or_null.* = .{
+            .last_edit_time = 0,
+            .data = data,
+            .cleanup_func = CleanupCtx.cleanup,
+        };
+    }
+    const res_info = &(res_info_or_null.*.?);
+
+    const fx = &res_info.data;
+    const defreturn = constPtrCast(*const T, fx.*).*;
+
     if (comptime options.embed_structs) {
-        return .{ .was_reloaded = false, .fx = comptime loadJsonResourceComptime(path, T) };
+        return .{ .was_reloaded = false, .fx = defreturn };
     } else {
-        var insert_result = self.fx_file_map.getOrPut(self.allocator, path) catch unreachable;
-        var res_info = insert_result.value_ptr;
-        if (!insert_result.found_existing) {
-            const CleanupCtx = struct {
-                pub fn cleanup(self2: *Self, res: *ResourceInfo) void {
-                    if (res.original_data != res.data) {
-                        const non_const_typed_ptr = ptrCast(*T, @constCast(res.data));
-                        self2.allocator.destroy(non_const_typed_ptr);
-                    }
-                }
-            };
-
-            const data = &(comptime loadJsonResourceComptime(path, T));
-            res_info.* = .{
-                .last_edit_time = 0,
-                .data = data,
-                .cleanup_func = CleanupCtx.cleanup,
-                .original_data = data,
-            };
-        }
-        var fx: **const anyopaque = &res_info.data;
-        var defreturn: T = constPtrCast(*const T, fx.*).*;
-
         var file = brk: {
             var buff: [512]u8 = undefined;
             var full_path = std.fmt.bufPrintZ(&buff, "{s}{s}", .{ options.src_path, path }) catch return .{ .was_reloaded = false, .fx = defreturn };
@@ -356,30 +396,30 @@ pub fn loadJsonResource(self: *Self, comptime path: []const u8, comptime T: type
         };
         defer file.close();
 
-        var stat = file.stat() catch return .{ .was_reloaded = false, .fx = defreturn };
+        const stat = file.stat() catch return .{ .was_reloaded = false, .fx = defreturn };
 
         if (stat.mtime <= res_info.last_edit_time)
             return .{ .was_reloaded = false, .fx = defreturn };
 
-        var data = file.readToEndAlloc(self.allocator, 100_000) catch return .{ .was_reloaded = false, .fx = defreturn };
+        const data = file.readToEndAlloc(self.allocator, 100_000) catch return .{ .was_reloaded = false, .fx = defreturn };
         defer self.allocator.free(data);
 
         res_info.last_edit_time = stat.mtime;
 
-        var newPtr = brk: {
+        const newPtr = brk: {
             var json_stream = std.json.TokenStream.init(data);
 
-            var res = self.allocator.create(T) catch return .{ .was_reloaded = false, .fx = defreturn };
+            var resource = self.allocator.create(T) catch return .{ .was_reloaded = false, .fx = defreturn };
             var success = false;
             defer {
                 if (!success) {
-                    self.allocator.destroy(res);
+                    self.allocator.destroy(resource);
                 }
             }
-            res.* = std.json.parse(T, &json_stream, .{ .allow_trailing_data = true }) catch return .{ .was_reloaded = false, .fx = defreturn };
+            resource.* = std.json.parse(T, &json_stream, parse_json_params) catch return .{ .was_reloaded = false, .fx = defreturn };
 
             success = true;
-            break :brk res;
+            break :brk resource;
         };
 
         res_info.cleanup_func(self, res_info);
@@ -389,11 +429,45 @@ pub fn loadJsonResource(self: *Self, comptime path: []const u8, comptime T: type
     }
 }
 
-pub fn step(self: *Self) !void {
+fn LoadJsonResult(comptime T: type) type {
+    return struct { was_reloaded: bool, fx: T };
+}
+
+pub fn loadJsonResource(self: *Self, comptime res_id: res.Resource, comptime T: type) LoadJsonResult(T) {
+    @setEvalBranchQuota(20_000);
+
+    if (comptime options.embed_structs) {
+        return .{ .was_reloaded = false, .fx = comptime loadJsonResourceComptime(res_id, T) };
+    } else {
+        return loadJsonResourceAllocate(self, res_id, T);
+    }
+}
+
+pub fn die(self: *Self) void {
     var s = &self.state;
+    s.game_over = true;
+    std.log.info("Game over", .{});
+    var fx = self.loadJsonResource(.part, State.ParticleParams).fx;
+    fx.ox = s.player_x;
+    fx.oy = s.player_y;
+
+    s.particleBurst(fx);
+    s.scr_shake_x = 5;
+    s.scr_shake_y = 5;
+}
+
+pub fn step(self: *Self) !void {
+    self.global_frames +%= 1;
+    var s = &self.state;
+    s.speed -= 4.0 / 60.0 / 60.0;
 
     if (comptime !options.embed_structs) {
-        if (self.loadJsonResource("res/part.json", State.ParticleParams).was_reloaded) {
+        if (self.loadJsonResource(.part, State.ParticleParams).was_reloaded) {
+            s.deinit();
+            self.reset();
+        }
+
+        if (self.loadJsonResourceAllocate(.blocks, Tiled).was_reloaded) {
             s.deinit();
             self.reset();
         }
@@ -406,23 +480,14 @@ pub fn step(self: *Self) !void {
 
     //s = &self.state;
 
-    for (&s.blocks) |*block_null| {
-        var block = &(block_null.* orelse continue);
-        const collide_before = aabb(s.player_x - player_width / 2, s.player_y - player_width / 2, player_width, player_width, block.x, block.y, block.w, block.h);
-        block.x += block.vx;
+    for (s.blocks.items) |*block| {
+        const collide_before = aabb(s.player_x - player_width / 2, s.player_y - (player_width - 2.0) / 2, player_width, player_width - 2.0, block.x, block.y, block.w, block.h);
+        block.x += block.vx + s.speed;
 
         if (!s.game_over and !collide_before) {
-            const collide_after = aabb(s.player_x - player_width / 2, s.player_y - player_width / 2, player_width, player_width, block.x, block.y, block.w, block.h);
+            const collide_after = aabb(s.player_x - player_width / 2, s.player_y - (player_width - 2.0) / 2, player_width, player_width - 2.0, block.x, block.y, block.w, block.h);
             if (collide_after) {
-                s.game_over = true;
-                std.log.info("Game over", .{});
-                var fx = self.loadJsonResource("res/part.json", State.ParticleParams).fx;
-                fx.ox = s.player_x;
-                fx.oy = s.player_y;
-
-                s.particleBurst(fx);
-                s.scr_shake_x = 5;
-                s.scr_shake_y = 5;
+                self.die();
             }
         }
 
@@ -430,19 +495,18 @@ pub fn step(self: *Self) !void {
     }
 
     if (!s.game_over) {
-        if (self.input.is_just_pressed(.a)) {
+        if (self.input.is_just_pressed(.a) and s.player_can_jump) {
             self.playSound(.jump);
             s.player_gravity *= -1.0;
+            s.player_can_jump = false;
         }
 
         var prev_v = s.player_vy;
         s.player_vy += gravity * s.player_gravity;
-        s.player_vy = std.math.clamp(s.player_vy, -player_max_speed, player_max_speed);
+        s.player_vy = std.math.clamp(s.player_vy, -player_max_speed + s.speed, player_max_speed - s.speed);
         var next_y = s.player_y + s.player_vy;
 
-        for (&s.blocks) |*block_null| {
-            var block = &(block_null.* orelse continue);
-
+        for (s.blocks.items) |block| {
             if (s.player_x < block.x - player_width / 2 or s.player_x > block.x + block.w + player_width / 2) {
                 continue;
             }
@@ -468,6 +532,7 @@ pub fn step(self: *Self) !void {
             }
 
             if (grounded) {
+                s.player_can_jump = true;
                 s.scr_shake_x = absmax(s.scr_shake_x, std.math.fabs(prev_v) * 0.25);
                 s.scr_offset_y = absmax(s.scr_offset_y, -prev_v * 0.25);
                 s.player_vy = 0;
@@ -487,6 +552,10 @@ pub fn step(self: *Self) !void {
         }
 
         s.player_y = next_y;
+
+        if (s.player_y > game_height or s.player_y < 0) {
+            self.die();
+        }
     }
 
     s.scr_shake_x = decay(s.scr_shake_x, 0.80, 0.1);
@@ -495,6 +564,31 @@ pub fn step(self: *Self) !void {
     s.scr_offset_y = decay(s.scr_offset_y, 0.80, 0.1);
 
     s.stepParticles();
+
+    {
+        var farthest_x: f32 = 0;
+        // garbage collect blocks
+        {
+            var i = s.blocks.items.len;
+            while (i > 0) {
+                i -= 1;
+                const block = &s.blocks.items[i];
+                const dist = block.x + block.w;
+                if (dist < 0) {
+                    _ = s.blocks.swapRemove(i);
+                }
+                if (dist > farthest_x) {
+                    farthest_x = dist;
+                }
+            }
+        }
+
+        if (farthest_x < game_width + 16) {
+            var num = self.getNumBlocks();
+            var chosen = s.game_random.random().intRangeLessThan(usize, 0, num);
+            self.spawnBlocks(chosen, farthest_x);
+        }
+    }
 
     // DRAW
 
@@ -514,12 +608,19 @@ pub fn step(self: *Self) !void {
         p.b = lerp(p.b, b.b, 3, 4);
     }
 
-    for (s.blocks) |block_null| {
-        var block = block_null orelse continue;
+    for (s.blocks.items) |block| {
         self.img.drawRect(@floatToInt(i32, block.x), @floatToInt(i32, block.y), @floatToInt(i32, block.w), @floatToInt(i32, block.h), sw.Color.fromRGB(0x00FFFF));
     }
 
     s.drawParticles(&self.img);
+
+    for (0..20) |_| {
+        for (0..game_height / 16) |y| {
+            for (0..game_width / 16) |x| {
+                self.img.drawImageRect(@intCast(i32, x) * 16, @intCast(i32, y) * 16, self.sprite, self.sprite.getRect(), .{});
+            }
+        }
+    }
 
     if (!s.game_over) {
         var x = @floatToInt(i32, s.player_x - player_width / 2);
@@ -529,4 +630,17 @@ pub fn step(self: *Self) !void {
     }
 
     //self.img.drawImageRect(self.ralsei_x, self.ralsei_y, self.ralsei, self.ralsei.getRect(), .{});
+}
+
+fn spawnBlocks(self: *Self, num: usize, offset: f32) void {
+    var blocks: Tiled = self.loadJsonResourceAllocate(.blocks, Tiled).fx;
+    const layer = blocks.layers[num];
+
+    for (layer.objects) |obj| {
+        (self.state.blocks.addOne(self.allocator) catch unreachable).* = obj.toBlock(offset);
+    }
+}
+
+fn getNumBlocks(self: *Self) usize {
+    return self.loadJsonResourceAllocate(.blocks, Tiled).fx.layers.len - 2;
 }
