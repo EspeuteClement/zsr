@@ -18,6 +18,36 @@ pub const Color = packed struct(u32) {
         };
     }
 
+    inline fn fToU8(v: f32) u8 {
+        return @floatToInt(u8, std.math.clamp(v, 0.0, 1.0) * 255);
+    }
+
+    pub fn fromHSV(h: f32, s: f32, v: f32, a: f32) Color {
+        const c = v * s;
+        const x = c * (1.0 - @fabs(@mod(h / 60.0, 2.0) - 1.0));
+        const m = v - c;
+
+        const rgb: struct { r: f32, g: f32, b: f32 } = if (h < 60.0)
+            .{ .r = c, .g = x, .b = 0 }
+        else if (h < 120.0)
+            .{ .r = x, .g = c, .b = 0 }
+        else if (h < 180)
+            .{ .r = 0, .g = c, .b = x }
+        else if (h < 240)
+            .{ .r = 0, .g = x, .b = c }
+        else if (h < 300)
+            .{ .r = x, .g = 0, .b = c }
+        else
+            .{ .r = c, .g = 0, .b = x };
+
+        return .{
+            .r = fToU8(rgb.r + m),
+            .g = fToU8(rgb.g + m),
+            .b = fToU8(rgb.b + m),
+            .a = fToU8(a),
+        };
+    }
+
     test fromRGB {
         var c = fromRGB(0xabcdef);
         var ref = Color{

@@ -143,10 +143,10 @@ pub fn main() !void {
                     }
                 }
 
-                var timer = std.time.Timer.start() catch unreachable;
+                // var timer = std.time.Timer.start() catch unreachable;
                 try game.step();
-                var step_time = @intToFloat(f64, timer.read());
-                std.debug.print("step : {d:0>6}ms\n", .{step_time / std.time.ns_per_ms});
+                //var step_time = @intToFloat(f64, timer.read());
+                // std.debug.print("step : {d:0>6}ms\n", .{step_time / std.time.ns_per_ms});
             }
 
             updatesThisLoop += 1;

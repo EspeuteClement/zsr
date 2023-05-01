@@ -1,191 +1,7 @@
 { "compressionlevel":-1,
- "editorsettings":
-    {
-     "export":
-        {
-         "format":"json1",
-         "target":"blocks.json"
-        }
-    },
  "height":20,
  "infinite":true,
  "layers":[
-        {
-         "draworder":"topdown",
-         "id":10,
-         "name":"Opposing",
-         "objects":[
-                {
-                 "height":16,
-                 "id":450,
-                 "name":"",
-                 "rotation":0,
-                 "type":"",
-                 "visible":true,
-                 "width":688,
-                 "x":0,
-                 "y":0
-                }, 
-                {
-                 "height":16,
-                 "id":451,
-                 "name":"",
-                 "rotation":0,
-                 "type":"",
-                 "visible":true,
-                 "width":736,
-                 "x":0,
-                 "y":144
-                }, 
-                {
-                 "height":96,
-                 "id":452,
-                 "name":"",
-                 "rotation":0,
-                 "type":"",
-                 "visible":true,
-                 "width":16,
-                 "x":112,
-                 "y":48
-                }, 
-                {
-                 "height":112,
-                 "id":455,
-                 "name":"",
-                 "rotation":0,
-                 "type":"",
-                 "visible":true,
-                 "width":16,
-                 "x":208,
-                 "y":16
-                }, 
-                {
-                 "height":112,
-                 "id":456,
-                 "name":"",
-                 "rotation":0,
-                 "type":"",
-                 "visible":true,
-                 "width":128,
-                 "x":304,
-                 "y":32
-                }, 
-                {
-                 "height":112,
-                 "id":457,
-                 "name":"",
-                 "rotation":0,
-                 "type":"",
-                 "visible":true,
-                 "width":16,
-                 "x":512,
-                 "y":16
-                }, 
-                {
-                 "height":112,
-                 "id":458,
-                 "name":"",
-                 "rotation":0,
-                 "type":"",
-                 "visible":true,
-                 "width":16,
-                 "x":592,
-                 "y":32
-                }],
-         "opacity":1,
-         "type":"objectgroup",
-         "visible":true,
-         "x":0,
-         "y":0
-        }, 
-        {
-         "draworder":"topdown",
-         "id":9,
-         "name":"Holes",
-         "objects":[
-                {
-                 "height":16,
-                 "id":434,
-                 "name":"",
-                 "rotation":0,
-                 "type":"",
-                 "visible":true,
-                 "width":144,
-                 "x":0,
-                 "y":144
-                }, 
-                {
-                 "height":16,
-                 "id":441,
-                 "name":"",
-                 "rotation":0,
-                 "type":"",
-                 "visible":true,
-                 "width":128,
-                 "x":240,
-                 "y":144
-                }, 
-                {
-                 "height":16,
-                 "id":442,
-                 "name":"",
-                 "rotation":0,
-                 "type":"",
-                 "visible":true,
-                 "width":160,
-                 "x":112,
-                 "y":80
-                }, 
-                {
-                 "height":16,
-                 "id":446,
-                 "name":"",
-                 "rotation":0,
-                 "type":"",
-                 "visible":true,
-                 "width":112,
-                 "x":336,
-                 "y":80
-                }, 
-                {
-                 "height":16,
-                 "id":447,
-                 "name":"",
-                 "rotation":0,
-                 "type":"",
-                 "visible":true,
-                 "width":96,
-                 "x":416,
-                 "y":144
-                }, 
-                {
-                 "height":16,
-                 "id":448,
-                 "name":"",
-                 "rotation":0,
-                 "type":"",
-                 "visible":true,
-                 "width":96,
-                 "x":496,
-                 "y":80
-                }, 
-                {
-                 "height":16,
-                 "id":449,
-                 "name":"",
-                 "rotation":0,
-                 "type":"",
-                 "visible":true,
-                 "width":64,
-                 "x":576,
-                 "y":144
-                }],
-         "opacity":1,
-         "type":"objectgroup",
-         "visible":false,
-         "x":0,
-         "y":0
-        }, 
         {
          "draworder":"topdown",
          "id":7,
@@ -320,6 +136,17 @@
         }, 
         {
          "draworder":"topdown",
+         "id":8,
+         "name":"Object Layer 6",
+         "objects":[],
+         "opacity":1,
+         "type":"objectgroup",
+         "visible":true,
+         "x":0,
+         "y":0
+        }, 
+        {
+         "draworder":"topdown",
          "id":5,
          "name":"Platform",
          "objects":[
@@ -446,7 +273,7 @@
                 }],
          "opacity":1,
          "type":"objectgroup",
-         "visible":false,
+         "visible":true,
          "x":0,
          "y":0
         }, 
@@ -514,17 +341,16 @@
                  "height":16,
                  "id":15,
                  "name":"",
-                 "properties":[
-                        {
-                         "name":"vx",
-                         "type":"float",
-                         "value":4
-                        }, 
-                        {
-                         "name":"vy",
-                         "type":"float",
-                         "value":69
-                        }],
+                 "properties":
+                    {
+                     "vx":4,
+                     "vy":69
+                    },
+                 "propertytypes":
+                    {
+                     "vx":"float",
+                     "vy":"float"
+                    },
                  "rotation":0,
                  "type":"Block",
                  "visible":true,
@@ -695,8 +521,8 @@
          "x":0,
          "y":0
         }],
- "nextlayerid":11,
- "nextobjectid":459,
+ "nextlayerid":9,
+ "nextobjectid":433,
  "orientation":"orthogonal",
  "renderorder":"right-down",
  "tiledversion":"1.10.1",
@@ -704,6 +530,6 @@
  "tilesets":[],
  "tilewidth":16,
  "type":"map",
- "version":"1.10",
+ "version":1.1,
  "width":30
 }

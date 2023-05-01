@@ -10,12 +10,12 @@ img: sw.Image = undefined,
 backbuffer: sw.Image = undefined,
 
 //ralsei: sw.Image = undefined,
-sprite: sw.Image = undefined,
+//sprite: sw.Image = undefined, stresstest
 allocator: std.mem.Allocator = undefined,
 input: Input = Input{},
 
 state: State = undefined,
-global_frames: u128 = undefined,
+global_frames: u64 = undefined,
 
 playSoundCb: ?*const fn (Sound) void = null,
 
@@ -234,13 +234,14 @@ const Block = struct {
 pub fn init(alloc: std.mem.Allocator, playSoundCB: ?*const fn (Sound) void, seed: u64) !Self {
     var game: Self = .{};
 
-    game.sprite = sw.Image.init(alloc, 16, 16) catch unreachable;
-    for (game.sprite.pixels, 0..) |*p, i| {
-        const x: u8 = (@intCast(u8, i) % 16) * 16;
-        const y: u8 = @divTrunc(@intCast(u8, i), 16) * 16;
-        const c = x ^ y;
-        p.* = .{ .r = c, .g = c, .b = c, .a = 255 };
-    }
+    // stresstest
+    // game.sprite = sw.Image.init(alloc, 16, 16) catch unreachable;
+    // for (game.sprite.pixels, 0..) |*p, i| {
+    //     const x: u8 = (@intCast(u8, i) % 16) * 16;
+    //     const y: u8 = @divTrunc(@intCast(u8, i), 16) * 16;
+    //     const c = x ^ y;
+    //     p.* = .{ .r = c, .g = c, .b = c, .a = 255 };
+    // }
     game.global_frames = seed;
     game.allocator = alloc;
     game.playSoundCb = playSoundCB;
@@ -266,11 +267,11 @@ pub fn init(alloc: std.mem.Allocator, playSoundCB: ?*const fn (Sound) void, seed
 pub fn reset(self: *Self) void {
     self.state = State.init(self.allocator, @truncate(u64, self.global_frames));
 
-    self.spawnBlocks(self.getNumBlocks(), 0.0);
+    self.spawnBlocks(self.getNumBlocks(), 0.0, false);
 
     // Always spawn the first pattern as a preview when in debug mode
     if (comptime !options.embed_structs) {
-        self.spawnBlocks(0, game_width + 16);
+        self.spawnBlocks(0, game_width + 16, true);
     }
 }
 
@@ -451,15 +452,23 @@ pub fn die(self: *Self) void {
     fx.ox = s.player_x;
     fx.oy = s.player_y;
 
+    if (s.player_y > 0 and s.player_y < game_height)
+        fx.vy += s.player_vy / 4;
+
     s.particleBurst(fx);
     s.scr_shake_x = 5;
     s.scr_shake_y = 5;
 }
 
 pub fn step(self: *Self) !void {
-    self.global_frames +%= 1;
+    self.global_frames += 1;
     var s = &self.state;
     s.speed -= 4.0 / 60.0 / 60.0;
+
+    const angle = @intToFloat(f32, self.global_frames % 360);
+    const c1 = sw.Color.fromHSV(angle, 1.0, 1.0, 1.0);
+    const c2 = sw.Color.fromHSV(angle, 0.5, 0.75, 1.0);
+    const c3 = sw.Color.fromHSV(angle, 0.25, 0.25, 1.0);
 
     if (comptime !options.embed_structs) {
         if (self.loadJsonResource(.part, State.ParticleParams).was_reloaded) {
@@ -502,7 +511,7 @@ pub fn step(self: *Self) !void {
         }
 
         var prev_v = s.player_vy;
-        s.player_vy += gravity * s.player_gravity;
+        s.player_vy += (gravity + std.math.sqrt(@fabs(s.speed))) * s.player_gravity;
         s.player_vy = std.math.clamp(s.player_vy, -player_max_speed + s.speed, player_max_speed - s.speed);
         var next_y = s.player_y + s.player_vy;
 
@@ -586,7 +595,8 @@ pub fn step(self: *Self) !void {
         if (farthest_x < game_width + 16) {
             var num = self.getNumBlocks();
             var chosen = s.game_random.random().intRangeLessThan(usize, 0, num);
-            self.spawnBlocks(chosen, farthest_x);
+            var flip = s.game_random.random().boolean();
+            self.spawnBlocks(chosen, farthest_x, flip);
         }
     }
 
@@ -597,7 +607,7 @@ pub fn step(self: *Self) !void {
 
     std.mem.copy(sw.Color, self.backbuffer.pixels, self.img.pixels);
 
-    self.img.drawClear(sw.Color.fromRGB(0xFF00FF));
+    self.img.drawClear(c3);
 
     self.img.camera_x = @floatToInt(i32, s.scr_offset_x + s.scr_shake_x * std.math.clamp(s.fx_random.random().float(f32) * 2.0 - 1.0, -1.0, 1.0));
     self.img.camera_y = @floatToInt(i32, s.scr_offset_y + s.scr_shake_y * std.math.clamp(s.fx_random.random().float(f32) * 2.0 - 1.0, -1.0, 1.0));
@@ -609,35 +619,40 @@ pub fn step(self: *Self) !void {
     }
 
     for (s.blocks.items) |block| {
-        self.img.drawRect(@floatToInt(i32, block.x), @floatToInt(i32, block.y), @floatToInt(i32, block.w), @floatToInt(i32, block.h), sw.Color.fromRGB(0x00FFFF));
+        self.img.drawRect(@floatToInt(i32, block.x), @floatToInt(i32, block.y), @floatToInt(i32, block.w), @floatToInt(i32, block.h), c2);
     }
 
     s.drawParticles(&self.img);
 
-    for (0..20) |_| {
-        for (0..game_height / 16) |y| {
-            for (0..game_width / 16) |x| {
-                self.img.drawImageRect(@intCast(i32, x) * 16, @intCast(i32, y) * 16, self.sprite, self.sprite.getRect(), .{});
-            }
-        }
-    }
+    // stresstest
+    // for (0..20) |_| {
+    //     for (0..game_height / 16) |y| {
+    //         for (0..game_width / 16) |x| {
+    //             self.img.drawImageRect(@intCast(i32, x) * 16, @intCast(i32, y) * 16, self.sprite, self.sprite.getRect(), .{});
+    //         }
+    //     }
+    // }
 
     if (!s.game_over) {
         var x = @floatToInt(i32, s.player_x - player_width / 2);
         var y = @floatToInt(i32, s.player_y - player_width / 2);
 
-        self.img.drawRect(x, y, player_width, player_width, sw.Color.fromRGB(0xFFFFFF));
+        self.img.drawRect(x, y, player_width, player_width, c1);
     }
 
     //self.img.drawImageRect(self.ralsei_x, self.ralsei_y, self.ralsei, self.ralsei.getRect(), .{});
 }
 
-fn spawnBlocks(self: *Self, num: usize, offset: f32) void {
+fn spawnBlocks(self: *Self, num: usize, offset: f32, mirror_y: bool) void {
     var blocks: Tiled = self.loadJsonResourceAllocate(.blocks, Tiled).fx;
     const layer = blocks.layers[num];
 
     for (layer.objects) |obj| {
-        (self.state.blocks.addOne(self.allocator) catch unreachable).* = obj.toBlock(offset);
+        var ptr = self.state.blocks.addOne(self.allocator) catch unreachable;
+        ptr.* = obj.toBlock(offset);
+        if (mirror_y) {
+            ptr.y = game_height - (ptr.y + ptr.h);
+        }
     }
 }
 

@@ -5,7 +5,8 @@
     "fileStates": {
     },
     "last.exportedFilePath": "C:/Users/Valden/Documents/Documents/DEV/zig/zsr/src/res",
-    "map.lastUsedExportFilter": "JSON map files (*.tmj *.json)",
+    "map.lastUsedExportFilter": "JSON map files [Tiled 1.1] (*.json)",
+    "map.lastUsedFormat": "json",
     "openFiles": [
     ],
     "project": "BlocksProject.tiled-project",
