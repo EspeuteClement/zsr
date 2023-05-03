@@ -85,7 +85,7 @@ pub fn build(b: *std.build.Builder) void {
             .name = "module",
             .root_source_file = .{ .path = "src/main-web.zig" },
             .target = .{ .cpu_arch = .wasm32, .os_tag = .freestanding },
-            .optimize = optimize,
+            .optimize = .ReleaseSmall,
         });
 
         web.addIncludePath("libs/stb/");
@@ -148,11 +148,20 @@ pub fn build(b: *std.build.Builder) void {
         web_audio.addIncludePath("libs/stb/");
         web_audio.linkLibC();
 
+        const dest_dir = std.build.InstallDir{ .custom = "web" };
+        const dest_sub_dir = std.build.InstallDir{ .custom = "web/lib" };
+
         var install_html = b.addInstallFile(.{ .path = "src/web/index.html" }, "index.html");
+        install_html.dir = dest_dir;
+
         var install_js = b.addInstallFile(.{ .path = "src/web/audio.js" }, "audio.js");
+        install_js.dir = dest_dir;
         var install_module_audio = b.addInstallArtifact(web_audio);
+        install_module_audio.dest_dir = dest_sub_dir;
 
         var install_module = b.addInstallArtifact(web);
+        install_module.dest_dir = dest_sub_dir;
+
         const web_build = b.step("web", "Build the web version of the game");
         web_build.dependOn(&install_module.step);
         web_build.dependOn(&install_html.step);
@@ -161,6 +170,15 @@ pub fn build(b: *std.build.Builder) void {
 
         break :brk web_build;
     };
+
+    {
+        var publish_step = b.step("web-publish", "Publish the game on itch");
+
+        const butler_cmd = b.addSystemCommand(&[_][]const u8{ "butler", "push", "zig-out/web", "valden/hell-world:web" });
+        butler_cmd.step.dependOn(web_build);
+
+        publish_step.dependOn(&butler_cmd.step);
+    }
 
     {
         var all = b.step("all", "Build all target, then run desktop target");

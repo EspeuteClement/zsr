@@ -9,6 +9,10 @@ const options = @import("options");
 img: sw.Image = undefined,
 backbuffer: sw.Image = undefined,
 
+font: sw.Image = undefined,
+spr_time: sw.Image = undefined,
+spr_restart: sw.Image = undefined,
+
 //ralsei: sw.Image = undefined,
 //sprite: sw.Image = undefined, stresstest
 allocator: std.mem.Allocator = undefined,
@@ -85,9 +89,11 @@ const State = struct {
     player_gravity: f32 = 1,
     player_can_jump: bool = false,
 
-    speed: f32 = -3.0,
+    speed: f32 = -2.5,
+    score: f32 = 0.0,
 
     game_over: bool = false,
+    game_over_time: f32 = 0.0,
 
     blocks: std.ArrayListUnmanaged(Block) = .{},
 
@@ -209,12 +215,12 @@ const State = struct {
         }
     }
 
-    pub fn drawParticles(self: *State, img: *sw.Image) void {
+    pub fn drawParticles(self: *State, img: *sw.Image, col: sw.Color) void {
         for (self.particles.items) |part| {
             var x = @floatToInt(i32, part.x - part.w / 2);
             var y = @floatToInt(i32, part.y - part.h / 2);
 
-            img.drawRect(x, y, @floatToInt(i32, part.w), @floatToInt(i32, part.h), sw.Color.fromRGB(0xFFFFFF));
+            img.drawRect(x, y, @floatToInt(i32, part.w), @floatToInt(i32, part.h), col);
         }
     }
 };
@@ -249,7 +255,16 @@ pub fn init(alloc: std.mem.Allocator, playSoundCB: ?*const fn (Sound) void, seed
     errdefer game.img.deinit(alloc);
 
     game.backbuffer = try sw.Image.init(alloc, game_width, game_height);
-    errdefer .backbuffer.deinit(alloc);
+    errdefer game.backbuffer.deinit(alloc);
+
+    game.font = try stbi.load_from_memory_to_Image(@embedFile("web/font.png"), game.allocator);
+    errdefer game.font.deinit(alloc);
+
+    game.spr_time = try stbi.load_from_memory_to_Image(@embedFile("web/time.png"), alloc);
+    errdefer game.spr_time.deinit(alloc);
+
+    game.spr_restart = try stbi.load_from_memory_to_Image(@embedFile("web/restart.png"), alloc);
+    errdefer game.spr_restart.deinit(alloc);
 
     game.resource_allocator = game.allocator;
 
@@ -259,6 +274,7 @@ pub fn init(alloc: std.mem.Allocator, playSoundCB: ?*const fn (Sound) void, seed
     //errdefer game.img.deinit(alloc);
 
     //game.playSound(.music);
+    game.playSound(.music);
     game.reset();
 
     return game;
@@ -278,6 +294,10 @@ pub fn reset(self: *Self) void {
 pub fn deinit(self: *Self) void {
     self.img.deinit(self.allocator);
     self.backbuffer.deinit(self.allocator);
+    self.font.deinit(self.allocator);
+    self.spr_time.deinit(self.allocator);
+    self.spr_restart.deinit(self.allocator);
+
     self.state.deinit();
     {
         for (&self.resource_cache.values) |*info_or_null| {
@@ -447,7 +467,6 @@ pub fn loadJsonResource(self: *Self, comptime res_id: res.Resource, comptime T: 
 pub fn die(self: *Self) void {
     var s = &self.state;
     s.game_over = true;
-    std.log.info("Game over", .{});
     var fx = self.loadJsonResource(.part, State.ParticleParams).fx;
     fx.ox = s.player_x;
     fx.oy = s.player_y;
@@ -455,15 +474,19 @@ pub fn die(self: *Self) void {
     if (s.player_y > 0 and s.player_y < game_height)
         fx.vy += s.player_vy / 4;
 
+    self.playSound(.death);
     s.particleBurst(fx);
-    s.scr_shake_x = 5;
-    s.scr_shake_y = 5;
+    self.shake(5, 5);
+}
+
+pub fn shake(self: *Self, x: f32, y: f32) void {
+    self.state.scr_shake_x = @max(self.state.scr_shake_x, x);
+    self.state.scr_shake_y = @max(self.state.scr_shake_y, y);
 }
 
 pub fn step(self: *Self) !void {
     self.global_frames += 1;
     var s = &self.state;
-    s.speed -= 4.0 / 60.0 / 60.0;
 
     const angle = @intToFloat(f32, self.global_frames % 360);
     const c1 = sw.Color.fromHSV(angle, 1.0, 1.0, 1.0);
@@ -490,10 +513,9 @@ pub fn step(self: *Self) !void {
     //s = &self.state;
 
     for (s.blocks.items) |*block| {
-        const collide_before = aabb(s.player_x - player_width / 2, s.player_y - (player_width - 2.0) / 2, player_width, player_width - 2.0, block.x, block.y, block.w, block.h);
         block.x += block.vx + s.speed;
 
-        if (!s.game_over and !collide_before) {
+        if (!s.game_over) {
             const collide_after = aabb(s.player_x - player_width / 2, s.player_y - (player_width - 2.0) / 2, player_width, player_width - 2.0, block.x, block.y, block.w, block.h);
             if (collide_after) {
                 self.die();
@@ -504,6 +526,9 @@ pub fn step(self: *Self) !void {
     }
 
     if (!s.game_over) {
+        s.speed -= 2.0 / 60.0 / 60.0;
+        s.score += 1.0 / 60.0;
+
         if (self.input.is_just_pressed(.a) and s.player_can_jump) {
             self.playSound(.jump);
             s.player_gravity *= -1.0;
@@ -526,6 +551,13 @@ pub fn step(self: *Self) !void {
                 if (s.player_y <= h and next_y > h) {
                     next_y = h;
                     grounded = true;
+                    self.shake(std.math.fabs(prev_v) * 0.25, 0.0);
+                    s.scr_offset_y = absmax(s.scr_offset_y, prev_v * 0.25);
+
+                    if (@fabs(prev_v) > 1.0)
+                        self.playSound(.land);
+
+                    s.player_vy = 0;
                 }
             }
 
@@ -534,25 +566,28 @@ pub fn step(self: *Self) !void {
                 if (s.player_y >= h and next_y < h) {
                     next_y = h;
                     grounded = true;
-                    s.scr_shake_x = absmax(s.scr_shake_x, std.math.fabs(prev_v) * 0.25);
+                    self.shake(std.math.fabs(prev_v) * 0.25, 0.0);
                     s.scr_offset_y = absmax(s.scr_offset_y, -prev_v * 0.25);
+                    if (@fabs(prev_v) > 1.0)
+                        self.playSound(.land);
                     s.player_vy = 0;
                 }
             }
 
             if (grounded) {
                 s.player_can_jump = true;
-                s.scr_shake_x = absmax(s.scr_shake_x, std.math.fabs(prev_v) * 0.25);
+                self.shake(std.math.fabs(prev_v) * 0.25, 0.0);
                 s.scr_offset_y = absmax(s.scr_offset_y, -prev_v * 0.25);
                 s.player_vy = 0;
                 s.particleBurst(.{
-                    .ox = s.player_x - player_width / 2,
+                    .ox = s.player_x - player_width / 2 + 1,
                     .oy = s.player_y + (player_width / 2 * s.player_gravity),
+                    .ay = s.player_gravity * 0.05,
                     .count = 1,
                     .lifetime = 1.0,
-                    .initial_speed = 1.0,
+                    .initial_speed = 2.0,
                     .vw = -0.1,
-                    .vh = -0.1 * s.player_gravity,
+                    .vh = -0.1,
                     .size = 2,
                     .start_angle = std.math.pi * (1.0 + s.player_gravity * 0.1),
                     .random_angle = 0.2,
@@ -567,10 +602,19 @@ pub fn step(self: *Self) !void {
         }
     }
 
-    s.scr_shake_x = decay(s.scr_shake_x, 0.80, 0.1);
-    s.scr_shake_y = decay(s.scr_shake_y, 0.80, 0.1);
-    s.scr_offset_x = decay(s.scr_offset_x, 0.80, 0.1);
-    s.scr_offset_y = decay(s.scr_offset_y, 0.80, 0.1);
+    if (s.game_over) {
+        s.game_over_time += 1.0 / 60.0;
+
+        if (s.game_over_time > 1.0 and self.input.is_just_pressed(.a)) {
+            s.deinit();
+            self.reset();
+        }
+    }
+
+    s.scr_shake_x = decay(s.scr_shake_x, 0.95, 0.1);
+    s.scr_shake_y = decay(s.scr_shake_y, 0.95, 0.1);
+    s.scr_offset_x = decay(s.scr_offset_x, 0.90, 0.1);
+    s.scr_offset_y = decay(s.scr_offset_y, 0.90, 0.1);
 
     s.stepParticles();
 
@@ -613,16 +657,16 @@ pub fn step(self: *Self) !void {
     self.img.camera_y = @floatToInt(i32, s.scr_offset_y + s.scr_shake_y * std.math.clamp(s.fx_random.random().float(f32) * 2.0 - 1.0, -1.0, 1.0));
 
     for (self.img.pixels, self.backbuffer.pixels) |*p, *b| {
-        p.r = lerp(p.r, b.r, 3, 4);
-        p.g = lerp(p.g, b.g, 3, 4);
-        p.b = lerp(p.b, b.b, 3, 4);
+        p.r = lerp(p.r, b.r, 2, 4);
+        p.g = lerp(p.g, b.g, 2, 4);
+        p.b = lerp(p.b, b.b, 2, 4);
     }
 
     for (s.blocks.items) |block| {
         self.img.drawRect(@floatToInt(i32, block.x), @floatToInt(i32, block.y), @floatToInt(i32, block.w), @floatToInt(i32, block.h), c2);
     }
 
-    s.drawParticles(&self.img);
+    s.drawParticles(&self.img, c1);
 
     // stresstest
     // for (0..20) |_| {
@@ -638,6 +682,16 @@ pub fn step(self: *Self) !void {
         var y = @floatToInt(i32, s.player_y - player_width / 2);
 
         self.img.drawRect(x, y, player_width, player_width, c1);
+    }
+
+    if (!s.game_over) {
+        self.drawScore();
+    } else if (@divTrunc(self.global_frames, 30) % 2 == 0) {
+        self.drawScore();
+        if (s.game_over_time > 1.0) {
+            const rec = self.spr_restart.getRect();
+            self.img.drawImageRect(game_width / 2 - @divTrunc(rec.w, 2), game_height / 2 - @divTrunc(rec.h, 2), self.spr_restart, rec, .{});
+        }
     }
 
     //self.img.drawImageRect(self.ralsei_x, self.ralsei_y, self.ralsei, self.ralsei.getRect(), .{});
@@ -658,4 +712,28 @@ fn spawnBlocks(self: *Self, num: usize, offset: f32, mirror_y: bool) void {
 
 fn getNumBlocks(self: *Self) usize {
     return self.loadJsonResourceAllocate(.blocks, Tiled).fx.layers.len - 2;
+}
+
+fn drawScore(self: *Self) void {
+    var cur_x: i32 = 2;
+    const cur_y = game_height - 10;
+    var score = self.state.score * 100.0;
+    var num_digits = @max(2, @floatToInt(i32, std.math.log10(score)));
+
+    self.img.drawImageRect(cur_x, cur_y + 3, self.spr_time, self.spr_time.getRect(), .{});
+
+    cur_x += self.spr_time.width + 2 + (num_digits + 1) * 5;
+
+    var i: usize = 0;
+    while (score >= 1.0 or i < 3) : (score /= 10.0) {
+        var cur_digit = @floatToInt(i32, @mod(score, 10.0));
+        self.img.drawImageRect(cur_x, cur_y, self.font, .{ .x = cur_digit * 5, .y = 0, .w = 5, .h = 8 }, .{});
+        cur_x -= 5;
+        i += 1;
+
+        if (i == 2) {
+            self.img.drawImageRect(cur_x, cur_y, self.font, .{ .x = 10 * 5, .y = 0, .w = 5, .h = 8 }, .{});
+            cur_x -= 5;
+        }
+    }
 }

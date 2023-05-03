@@ -1,16 +1,35 @@
 {
-    "activeFile": "",
+    "activeFile": "blocks.tmj",
     "expandedProjectPaths": [
+        "."
     ],
     "fileStates": {
+        "blocks.json": {
+            "scale": 24.4625,
+            "selectedLayer": 0,
+            "viewCenter": {
+                "x": 8.01226366888094,
+                "y": 8.032703117015842
+            }
+        },
+        "blocks.tmj": {
+            "scale": 54.03125,
+            "selectedLayer": 0,
+            "viewCenter": {
+                "x": 8.013880855986118,
+                "y": 8.013880855986118
+            }
+        }
     },
     "last.exportedFilePath": "C:/Users/Valden/Documents/Documents/DEV/zig/zsr/src/res",
     "map.lastUsedExportFilter": "JSON map files [Tiled 1.1] (*.json)",
     "map.lastUsedFormat": "json",
     "openFiles": [
+        "blocks.tmj"
     ],
     "project": "BlocksProject.tiled-project",
     "property.type": "float",
     "recentFiles": [
+        "blocks.tmj"
     ]
 }

@@ -24,6 +24,7 @@ pub inline fn write_png(filename: []const u8, width: i32, height: i32, component
 pub inline fn load_from_memory_to_Image(buffer: []const u8, _allocator: std.mem.Allocator) !sw.Image {
     var i: sw.Image = undefined;
     var out_channels: i32 = undefined;
+    c.stbi_set_flip_vertically_on_load_thread(0);
     var img = try load_from_memory(buffer, &i.width, &i.height, &out_channels, 4);
     defer free(img.ptr);
 

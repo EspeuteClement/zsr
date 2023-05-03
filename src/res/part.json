@@ -1,10 +1,12 @@
 {
-    "count": 16,
+    "count": 32,
     "initial_speed": 1.5,
-    "lifetime": 3.0,
-    "vw": -0.05,
-    "vh": -0.05,
+    "lifetime": 5.0,
+    "vw": -0.04,
+    "vh": -0.04,
     "vx": 2.0,
     "ax": -0.05,
-    "damping": 0.94
+    "ay": 0.01,
+    "damping": 0.94,
+    "random_speed": 1.0
 }

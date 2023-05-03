@@ -30,7 +30,7 @@ pub fn playSoundCb(snd: Sound) void {
 
 const Map = struct { b: input.VirtualButton, k: usize };
 const mapping = [_]Map{
-    .{ .b = .a, .k = c.SDL_SCANCODE_X },
+    .{ .b = .a, .k = c.SDL_SCANCODE_SPACE },
     .{ .b = .b, .k = c.SDL_SCANCODE_C },
     .{ .b = .left, .k = c.SDL_SCANCODE_LEFT },
     .{ .b = .right, .k = c.SDL_SCANCODE_RIGHT },

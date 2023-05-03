@@ -28,6 +28,12 @@ pub const Input = struct {
         self.current_state.set(button, pressed);
     }
 
+    pub fn accumulate_input(self: *Input, button: VirtualButton, pressed: bool) void {
+        if (!self.current_state.get(button)) {
+            self.current_state.set(button, pressed);
+        }
+    }
+
     pub fn is_down(self: *Input, button: VirtualButton) bool {
         return self.current_state.get(button);
     }

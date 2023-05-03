@@ -62,6 +62,7 @@ pub export fn init(seed: i32) void {
     allocator = gpa.allocator();
     callocators.allocator = allocator;
     game = Game.init(allocator, playSoundCb, @bitCast(u64, @as(i64, seed))) catch unreachable;
+    game.input.new_input_frame();
 }
 
 var time: f64 = 0.0;
@@ -92,23 +93,25 @@ pub export fn step(time2: f64) void {
 
     var updatesThisLoop: u32 = 0;
 
-    game.input.new_input_frame();
     inline for (@typeInfo(input.VirtualButton).Enum.fields) |i| {
-        game.input.set_input(@intToEnum(input.VirtualButton, i.value), is_key_down(i.value));
+        game.input.accumulate_input(@intToEnum(input.VirtualButton, i.value), is_key_down(i.value));
     }
 
+    const target_delta = 1.0 / 60.0;
     // Stable 60fps loop
-    while (accumulator >= 1.0 / 60.0) {
-        if (std.math.fabs(_error) > 1.0 / 60.0) {
+    while (accumulator >= target_delta) {
+        if (std.math.fabs(_error) > target_delta) {
             std.log.warn("Error too big, skipping a frame : {d:0<4.4}", .{_error});
-            _error -= std.math.sign(_error) * 1.0 / 60.0;
+            _error -= std.math.sign(_error) * target_delta;
         } else {
             game.step() catch unreachable;
             draw(game.img);
         }
 
+        game.input.new_input_frame();
+
         updatesThisLoop += 1;
 
-        accumulator -= 1.0 / 60.0;
+        accumulator -= target_delta;
     }
 }

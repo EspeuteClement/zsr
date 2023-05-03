@@ -13,6 +13,9 @@ const c = @cImport({
 var samples: []f32 = undefined;
 var tempBuffer: []f32 = undefined;
 
+const music_start = 1240;
+const music_end = 4705329;
+
 const soundData = brk: {
     const decls = @typeInfo(sound.SoundList).Struct.decls;
     var sounds: [decls.len][]const u8 = undefined;
@@ -35,6 +38,7 @@ const State = struct {
     firstSound: usize = 0,
     pocketmod: ?c.pocketmod_context = null,
     mp3: ?c.drmp3 = null,
+    mp3_current_sample: usize = 0,
 
     vorbis_alloc: if (oggSupport) c.stb_vorbis_alloc else void = undefined,
     ogg: if (oggSupport) ?*c.stb_vorbis else void = if (oggSupport) null else undefined,
@@ -67,8 +71,13 @@ const State = struct {
         }
         self.mp3 = std.mem.zeroInit(c.drmp3, .{});
         var res = c.drmp3_init_memory(&self.mp3.?, data.ptr, data.len, null);
-        //_ = c.drmp3_seek_to_pcm_frame(&self.mp3.?, 33 * 44100);
         if (res == 0) @panic("Couln't play mp3");
+        self.seekMp3(0);
+    }
+
+    pub fn seekMp3(self: *Self, sample: usize) void {
+        _ = c.drmp3_seek_to_pcm_frame(&self.mp3.?, sample + music_start);
+        self.mp3_current_sample = sample;
     }
 
     pub fn playSoundMod(self: *Self, data: []const u8) void {
@@ -172,19 +181,20 @@ pub fn gen_samples(numSamples: i32) []f32 {
 
         // pocketmod_render can render less samples than requested if at the end of the track
         while (buffPos < buff.len) {
+            var frames_to_read = @min(music_end - state.mp3_current_sample, buff.len / 2);
             var subBuff = buff[buffPos..];
 
             const numChannels = @intCast(usize, mp3.channels);
             if (numChannels > 2) @panic("Too Many Channels");
-            var read = c.drmp3_read_pcm_frames_f32(mp3, subBuff.len / numChannels, subBuff.ptr);
+            var read = c.drmp3_read_pcm_frames_f32(mp3, frames_to_read, subBuff.ptr);
 
             buffPos += @intCast(usize, read) * numChannels;
             // loop
             if (buffPos < buff.len) {
-                _ = c.drmp3_seek_to_pcm_frame(mp3, 1024);
+                state.seekMp3(0);
             }
         }
-        mix(tempBuffer, samples);
+        mixScale(tempBuffer, samples, 0.25);
     }
 
     if (oggSupport) {
@@ -240,6 +250,12 @@ pub fn gen_samples(numSamples: i32) []f32 {
 pub fn mix(in: []f32, out: []f32) void {
     for (in, out) |sin, *sout| {
         sout.* += sin;
+    }
+}
+
+pub fn mixScale(in: []f32, out: []f32, vol: f32) void {
+    for (in, out) |sin, *sout| {
+        sout.* += sin * vol;
     }
 }
 

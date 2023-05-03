@@ -8,8 +8,8 @@
 </head>
 <body style="display: flex; align-items: center; justify-content: center; margin: 0; padding: 0;">
     <div style="display: inline-block; position: relative; margin: 0; padding: 0;">
-        <canvas id="canvas" width=240 height=160 style="outline: 1px #777 solid; cursor: pointer; width: 480px; height: 320px; image-rendering: pixelated;"></canvas>
-        <div id="click-to-play" style="position: absolute; top: 50%; left: 50%; transform: translate(-50%,-50%); font-family: Georgia, 'Times New Roman', Times, serif; pointer-events: none;">--- Click to start ---</div>
+        <canvas id="canvas" width=240 height=160 style="outline: 1px #777 solid; cursor: pointer; width: 480px; height: 320px; max-width: 100%; aspect-ratio: 16 / 9; image-rendering: crisp-edges;"></canvas>
+        <div id="click-to-play" style="text-shadow:1px 1px 2px#000; color: #FFF; position: absolute; top: 50%; left: 50%; transform: translate(-50%,-50%); font-family: Georgia, 'Times New Roman', Times, serif; pointer-events: none;">--- Click to start ---</div>
     </div>
 
 
@@ -143,6 +143,18 @@
             clicked = true;
 		});
 
+        document.addEventListener("touchstart", (e) => {
+            keys[4] = true;
+        });
+
+        document.addEventListener("touchend", (e) => {
+            keys[4] = false;
+        });
+
+        document.addEventListener("touchcancel", (e) => {
+            keys[4] = false;
+        });
+
 		let newProcessorNode = createProcessor();
 		newProcessorNode.then( obj => {
             const soundSource = new OscillatorNode(audioContext);
@@ -162,8 +174,12 @@
         let startTime = 0;
         function mainLoop(time) {
             totaltime = time;
+            if (canvas.offsetWidth < 480 || canvas.offsetHeight < 320) {
+                canvas.style.height = "" +  canvas.offsetWidth * 160.0 / 240.0  + "px";
+            }
             if (stepFunction !== null && worklet !== null && engineAudioReady && clicked) {
                 click.style.visibility = "collapse";
+                click.style.display = "none";
                 
                 if (!init) {
                     startTime = time;
@@ -173,7 +189,6 @@
                 var start = performance.now();
                 stepFunction(time-startTime);
                 var end = performance.now();
-                console.log("Step time : " + (end - start).toFixed(4) + "ms");
             }
             else if (clicked) {
                 click.style.visibility = "initial";
