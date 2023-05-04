@@ -157,7 +157,7 @@ pub fn gen_samples(numSamples: i32) []f32 {
         tempBuffer = allocator.realloc(tempBuffer, numSamples2) catch unreachable;
     }
 
-    std.mem.set(f32, samples, 0.0);
+    @memset(samples, 0.0);
     if (state.pocketmod) |*pocketmod| {
         var buffPos: usize = 0;
 

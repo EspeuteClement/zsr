@@ -718,7 +718,9 @@ fn drawScore(self: *Self) void {
     var cur_x: i32 = 2;
     const cur_y = game_height - 10;
     var score = self.state.score * 100.0;
-    var num_digits = @max(2, @floatToInt(i32, std.math.log10(score)));
+	var log10 = std.math.log10(score);
+	if (log10 < 0.0) log10 = 0.0;
+    var num_digits = @max(2, @floatToInt(i32, log10));
 
     self.img.drawImageRect(cur_x, cur_y + 3, self.spr_time, self.spr_time.getRect(), .{});
 

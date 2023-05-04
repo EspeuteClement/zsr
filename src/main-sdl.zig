@@ -54,7 +54,7 @@ pub fn main() !void {
 
     var win = c.SDL_CreateWindow("Hell World", c.SDL_WINDOWPOS_CENTERED, c.SDL_WINDOWPOS_CENTERED, Game.game_width * zoom, Game.game_height * zoom, 0);
 
-    var rend = c.SDL_CreateRenderer(win, 0, c.SDL_RENDERER_PRESENTVSYNC);
+    var rend = c.SDL_CreateRenderer(win, 0, 0); //c.SDL_RENDERER_PRESENTVSYNC
 
     var tex = c.SDL_CreateTexture(rend, c.SDL_PIXELFORMAT_ABGR8888, c.SDL_TEXTUREACCESS_STREAMING, Game.game_width, Game.game_height);
 
@@ -154,9 +154,9 @@ pub fn main() !void {
             accumulator -= 1.0 / 60.0;
         }
 
-        if (updatesThisLoop != 1) {
-            std.log.warn("Updated {} time(s) this loop.", .{updatesThisLoop});
-        }
+        // if (updatesThisLoop != 1) {
+        //     std.log.warn("Updated {} time(s) this loop.", .{updatesThisLoop});
+        // }
 
         _ = c.SDL_UpdateTexture(tex, null, @ptrCast([*c]u8, game.img.pixels.ptr), Game.game_width * 4);
         _ = c.SDL_RenderCopy(rend, tex, null, &c.SDL_Rect{ .x = 0, .y = 0, .w = Game.game_width * zoom, .h = Game.game_height * zoom });

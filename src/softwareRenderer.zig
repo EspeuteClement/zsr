@@ -92,7 +92,7 @@ pub const Image = struct {
 
     /// Clear the image with the given color
     pub fn drawClear(self: Image, color: Color) void {
-        std.mem.set(Color, self.pixels, color);
+        @memset(self.pixels, color);
     }
 
     test drawClear {
