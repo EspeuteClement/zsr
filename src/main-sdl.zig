@@ -7,7 +7,7 @@ const Game = @import("game.zig");
 const Sound = @import("sounds.zig").Sound;
 
 const c = @cImport({
-    @cInclude("SDL.h");
+    @cInclude("SDL2/SDL.h");
 });
 
 const callocators = @import("callocators.zig");

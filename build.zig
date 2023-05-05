@@ -21,6 +21,14 @@ pub fn build(b: *std.build.Builder) void {
         });
         configure(b, exe);
 
+        const sdl_dep = b.dependency("sdl", .{
+            .target = target,
+            .optimize = .ReleaseFast,
+        });
+
+        exe.linkLibrary(sdl_dep.artifact("SDL2"));
+        if (target.isWindows()) exe.subsystem = .Windows;
+
         var opt = b.addOptions();
 
         var embed_structs = optimize != .Debug;
@@ -40,17 +48,14 @@ pub fn build(b: *std.build.Builder) void {
         exe.addIncludePath("libs/pocketmod/");
         exe.addIncludePath("libs/dr_wav/");
 
+        if (optimize == .ReleaseFast or optimize == .ReleaseSafe) {
+            exe.strip = true;
+            exe.want_lto = true;
+        }
+
         var exe_install = b.addInstallArtifact(exe);
 
         const run_cmd = b.addRunArtifact(exe);
-
-        var install_res = b.addInstallDirectory(.{
-            .source_dir = "res",
-            .install_dir = .{ .custom = "" },
-            .install_subdir = "bin/res/",
-        });
-
-        exe_install.step.dependOn(&install_res.step);
 
         const build_exe_step = b.step("exe", "Build and install the exe");
         build_exe_step.dependOn(&exe_install.step);
@@ -216,16 +221,9 @@ pub fn build(b: *std.build.Builder) void {
 }
 
 fn configure(b: *std.build.Builder, exe: *std.build.LibExeObjStep) void {
+    _ = b;
     exe.addCSourceFile("libs/stb/stb_image.c", &.{});
     exe.addCSourceFile("libs/stb/stb_image_write.c", &.{});
 
     exe.addIncludePath("libs/stb/");
-
-    exe.addIncludePath("libs/sdl/include");
-    exe.addLibraryPath("libs/sdl/lib");
-    exe.linkSystemLibrary("sdl2");
-    exe.linkLibC();
-
-    const install_sdl = b.addInstallBinFile(.{ .path = "libs/sdl/lib/SDL2.dll" }, "SDL2.dll");
-    exe.step.dependOn(&install_sdl.step);
 }
