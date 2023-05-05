@@ -21,7 +21,9 @@ Some resource (especially audio) are handled using a neat trick with comptime. A
 
 The game can be build as a standalone executable for windows (`zig build exe` or `zig build run`) via SDL or as a HTML5 game (`zig build web` then serve the `zig-out/web` folder with a local server like `python -m http.server` and navigate to `localhost/index.html`). The build also show how to use the itch.io cli butler to publish the game (`zig build web-publish` but you would need to have my credentials to actually do that).
 
-This code is in the state I finished the project, and is kinda messy. At the moment SDL is vendored with the repository and some parts of the engine could be better refactored. The game code is not in great shape too. The build.zig is also kinda messy because the HTML5 build was a big iterative process.
+This code is in the state I finished the project, and is kinda messy. Dome parts of the engine could be better refactored. The game code is not in great shape too.
+
+Building the game should now be cross platform thanks to the inclusion of the [Zig build port of SDL](https://github.com/andrewrk/SDL), but only Windows has been tested at the moment.
 
 ## HTML 5
 

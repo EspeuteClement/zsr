@@ -74,20 +74,23 @@ pub fn build(b: *std.build.Builder) void {
 
     // Tests
     {
-        // const exe_tests = b.addTest(.{ .root_source_file = .{ .path = "src/main.zig" } });
-        // configure(b, exe_tests);
+        const exe_tests = b.addTest(.{ .root_source_file = .{ .path = "src/main-sdl.zig" } });
+        const stbi_lib = buildStbImage(b, target, optimize);
 
-        // var test_options = b.addOptions();
-        // const test_path = comptime (std.fs.path.dirname(@src().file) orelse ".") ++ "/src/test/";
-        // test_options.addOption([]const u8, "test_path", test_path);
-        // exe_tests.addOptions("tests", test_options);
+        exe_tests.linkLibrary(stbi_lib);
+        var test_options = b.addOptions();
+        const test_path = comptime (std.fs.path.dirname(@src().file) orelse ".") ++ "/src/test/";
+        test_options.addOption([]const u8, "test_path", test_path);
+        exe_tests.addOptions("tests", test_options);
 
-        // const test_step = b.step("test", "Run unit tests");
-        // test_step.dependOn(&exe_tests.step);
+        const test_step = b.step("test", "Run unit tests");
+        test_step.dependOn(&exe_tests.step);
     }
 
     // Web build
     const web_build = brk: {
+        var web_target = .{ .cpu_arch = .wasm32, .os_tag = .freestanding };
+
         const web = b.addSharedLibrary(.{
             .name = "module",
             .root_source_file = .{ .path = "src/main-web.zig" },
@@ -96,8 +99,6 @@ pub fn build(b: *std.build.Builder) void {
         });
 
         web.addIncludePath("libs/stb/");
-
-        var web_target = .{ .cpu_arch = .wasm32, .os_tag = .freestanding };
 
         const stbi_lib = buildStbImage(b, web_target, .ReleaseSmall);
 
