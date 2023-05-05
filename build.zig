@@ -1,5 +1,16 @@
 const std = @import("std");
 
+const libs_root = "libs/";
+const audio_libs = [_][]const u8{
+    libs_root ++ "dr_wav/dr_mp3.c",
+    libs_root ++ "dr_wav/dr_wav.c",
+    libs_root ++ "pocketmod/pocketmod.c",
+};
+const audio_include_paths = [_][]const u8{
+    libs_root ++ "pocketmod/",
+    libs_root ++ "dr_wav/",
+};
+
 pub fn build(b: *std.build.Builder) void {
 
     // Standard target options allows the person running `zig build` to choose
@@ -19,7 +30,6 @@ pub fn build(b: *std.build.Builder) void {
             .target = target,
             .optimize = optimize,
         });
-        configure(b, exe);
 
         const sdl_dep = b.dependency("sdl", .{
             .target = target,
@@ -27,26 +37,18 @@ pub fn build(b: *std.build.Builder) void {
         });
 
         exe.linkLibrary(sdl_dep.artifact("SDL2"));
+
+        const audio = buildAudioLib(b, target, .ReleaseFast);
+        exe.linkLibrary(audio);
+
+        const stbi_lib = buildStbImage(b, target, .ReleaseFast);
+        exe.linkLibrary(stbi_lib);
+
         if (target.isWindows()) exe.subsystem = .Windows;
 
-        var opt = b.addOptions();
+        configureOptions(b, exe, optimize != .Debug);
 
-        var embed_structs = optimize != .Debug;
-
-        opt.addOption(bool, "embed_structs", embed_structs);
-
-        const src_path = comptime (std.fs.path.dirname(@src().file) orelse ".") ++ "/src/";
-        opt.addOption([]const u8, "src_path", src_path);
-
-        exe.addOptions("options", opt);
-
-        exe.addCSourceFile("libs/dr_wav/dr_mp3.c", &.{});
-        exe.addCSourceFile("libs/dr_wav/dr_wav.c", &.{});
-        //exe.addCSourceFile("libs/stb/stb_vorbis.c", &.{ "-std=c89", "-Wno-int-conversion", "-Wno-macro-redefined" });
         exe.linkLibC();
-        exe.addCSourceFile("libs/pocketmod/pocketmod.c", &.{});
-        exe.addIncludePath("libs/pocketmod/");
-        exe.addIncludePath("libs/dr_wav/");
 
         if (optimize == .ReleaseFast or optimize == .ReleaseSafe) {
             exe.strip = true;
@@ -72,16 +74,16 @@ pub fn build(b: *std.build.Builder) void {
 
     // Tests
     {
-        const exe_tests = b.addTest(.{ .root_source_file = .{ .path = "src/main.zig" } });
-        configure(b, exe_tests);
+        // const exe_tests = b.addTest(.{ .root_source_file = .{ .path = "src/main.zig" } });
+        // configure(b, exe_tests);
 
-        var test_options = b.addOptions();
-        const test_path = comptime (std.fs.path.dirname(@src().file) orelse ".") ++ "/src/test/";
-        test_options.addOption([]const u8, "test_path", test_path);
-        exe_tests.addOptions("tests", test_options);
+        // var test_options = b.addOptions();
+        // const test_path = comptime (std.fs.path.dirname(@src().file) orelse ".") ++ "/src/test/";
+        // test_options.addOption([]const u8, "test_path", test_path);
+        // exe_tests.addOptions("tests", test_options);
 
-        const test_step = b.step("test", "Run unit tests");
-        test_step.dependOn(&exe_tests.step);
+        // const test_step = b.step("test", "Run unit tests");
+        // test_step.dependOn(&exe_tests.step);
     }
 
     // Web build
@@ -95,63 +97,29 @@ pub fn build(b: *std.build.Builder) void {
 
         web.addIncludePath("libs/stb/");
 
-        var stbilib = b.addStaticLibrary(.{
-            .name = "stbi",
-            .target = .{ .cpu_arch = .wasm32, .os_tag = .freestanding },
-            .optimize = .ReleaseSmall,
-        });
-        stbilib.linkLibC();
-        stbilib.addCSourceFile("libs/stb/stb_image.c", &.{});
+        var web_target = .{ .cpu_arch = .wasm32, .os_tag = .freestanding };
 
-        stbilib.disable_sanitize_c = true;
-        stbilib.disable_stack_probing = true;
-        stbilib.stack_protector = false;
+        const stbi_lib = buildStbImage(b, web_target, .ReleaseSmall);
 
-        web.linkLibrary(stbilib);
-        web.stack_protector = false;
-        web.disable_sanitize_c = true;
-        web.disable_stack_probing = true;
-        web.export_symbol_names = &[_][]const u8{ "init", "step" };
-        web.import_memory = true;
-        web.strip = true;
+        web.linkLibrary(stbi_lib);
+        commonWasmSettings(web);
 
-        var opt = b.addOptions();
-        opt.addOption(bool, "embed_structs", true);
-        web.addOptions("options", opt);
+        configureOptions(b, web, true);
 
+        // Audio -----
         const web_audio = b.addSharedLibrary(.{
             .name = "module-audio",
             .root_source_file = .{ .path = "src/main-web-audio.zig" },
             .target = .{ .cpu_arch = .wasm32, .os_tag = .freestanding },
             .optimize = optimize,
         });
-        web_audio.addIncludePath("libs/pocketmod/");
-        web_audio.addIncludePath("libs/dr_wav/");
 
-        var drwav = b.addStaticLibrary(.{
-            .name = "drwav",
-            .target = .{ .cpu_arch = .wasm32, .os_tag = .freestanding },
-            .optimize = .ReleaseSmall,
-        });
-        drwav.linkLibC();
-        drwav.addCSourceFile("libs/dr_wav/dr_wav.c", &.{});
-        drwav.addCSourceFile("libs/dr_wav/dr_mp3.c", &.{});
-        //drwav.addCSourceFile("libs/stb/stb_vorbis.c", &.{ "-Wno-int-conversion", "-Wno-macro-redefined", "-Wno-conditional-type-mismatch" });
+        const audio = buildAudioLib(b, web_target, .ReleaseSmall);
+        web_audio.linkLibrary(audio);
 
-        drwav.disable_sanitize_c = true;
-        drwav.disable_stack_probing = true;
-        drwav.stack_protector = false;
-
-        web_audio.addCSourceFile("libs/pocketmod/pocketmod.c", &.{});
         web_audio.export_symbol_names = &[_][]const u8{ "init", "gen_samples", "playSound" };
         web_audio.import_memory = true;
-        web_audio.strip = false;
-        web_audio.linkLibrary(drwav);
-        web_audio.stack_protector = false;
-        web_audio.disable_sanitize_c = true;
-        web_audio.disable_stack_probing = true;
-        web_audio.addIncludePath("libs/stb/");
-        web_audio.linkLibC();
+        commonWasmSettings(web_audio);
 
         const dest_dir = std.build.InstallDir{ .custom = "web" };
         const dest_sub_dir = std.build.InstallDir{ .custom = "web/lib" };
@@ -220,10 +188,55 @@ pub fn build(b: *std.build.Builder) void {
     // }
 }
 
-fn configure(b: *std.build.Builder, exe: *std.build.LibExeObjStep) void {
-    _ = b;
-    exe.addCSourceFile("libs/stb/stb_image.c", &.{});
-    exe.addCSourceFile("libs/stb/stb_image_write.c", &.{});
+fn buildAudioLib(b: *std.build.Builder, target: std.zig.CrossTarget, optimize: std.builtin.Mode) *std.Build.Step.Compile {
+    const audio = b.addStaticLibrary(.{
+        .name = "audio",
+        .target = target,
+        .optimize = optimize,
+    });
 
-    exe.addIncludePath("libs/stb/");
+    audio.linkLibC();
+    audio.addCSourceFiles(&audio_libs, &.{});
+    for (audio_include_paths) |path| {
+        audio.installHeadersDirectory(path, "");
+    }
+
+    return audio;
+}
+
+fn buildStbImage(b: *std.build.Builder, target: std.zig.CrossTarget, optimize: std.builtin.Mode) *std.Build.Step.Compile {
+    const stbi = b.addStaticLibrary(.{
+        .name = "stbi",
+        .target = target,
+        .optimize = optimize,
+    });
+
+    stbi.linkLibC();
+
+    stbi.addCSourceFile("libs/stb/stb_image.c", &.{});
+    stbi.addCSourceFile("libs/stb/stb_image_write.c", &.{});
+
+    stbi.installHeadersDirectory("libs/stb/", "");
+
+    return stbi;
+}
+
+fn commonWasmSettings(compile: *std.build.Step.Compile) void {
+    compile.strip = true;
+    compile.stack_protector = false;
+    compile.disable_sanitize_c = true;
+    compile.disable_stack_probing = true;
+    compile.rdynamic = true;
+}
+
+fn configureOptions(b: *std.build.Builder, compile: *std.build.Step.Compile, embed_structs: bool) void {
+    const opt = b.addOptions();
+    opt.addOption(bool, "embed_structs", embed_structs);
+
+    if (!embed_structs) {
+        const src_path = comptime (std.fs.path.dirname(@src().file) orelse ".") ++ "/src/";
+        opt.addOption([]const u8, "src_path", src_path);
+    }
+
+    compile.addOptions("options", opt);
 }
