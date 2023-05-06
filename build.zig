@@ -83,8 +83,10 @@ pub fn build(b: *std.build.Builder) void {
         test_options.addOption([]const u8, "test_path", test_path);
         exe_tests.addOptions("tests", test_options);
 
+        const run_test = b.addRunArtifact(exe_tests);
+
         const test_step = b.step("test", "Run unit tests");
-        test_step.dependOn(&exe_tests.step);
+        test_step.dependOn(&run_test.step);
     }
 
     // Web build

@@ -5,6 +5,11 @@ const c = @cImport({
 
 const std = @import("std");
 const sw = @import("softwareRenderer.zig");
+const callocators = @import("callocators.zig");
+
+pub fn initAllocatorsTest() void {
+    callocators.allocator = std.testing.allocator;
+}
 
 pub inline fn load_from_memory(buffer: []const u8, out_x: *i32, out_y: *i32, out_channels: *i32, desierd_channels: usize) ![]u8 {
     var data = c.stbi_load_from_memory(buffer.ptr, @intCast(c_int, buffer.len), @ptrCast(*i32, out_x), @ptrCast(*i32, out_y), @ptrCast(*c_int, out_channels), @as(c_int, desierd_channels)) orelse return error.STBIError;
@@ -21,8 +26,8 @@ pub inline fn write_png(filename: []const u8, width: i32, height: i32, component
     return;
 }
 
-pub inline fn load_from_memory_to_Image(buffer: []const u8, _allocator: std.mem.Allocator) !sw.Image {
-    var i: sw.Image = undefined;
+pub inline fn loadFromMemToTexture(buffer: []const u8, _allocator: std.mem.Allocator) !sw.Texture {
+    var i: sw.Texture = undefined;
     var out_channels: i32 = undefined;
     c.stbi_set_flip_vertically_on_load_thread(0);
     var img = try load_from_memory(buffer, &i.width, &i.height, &out_channels, 4);
@@ -33,9 +38,9 @@ pub inline fn load_from_memory_to_Image(buffer: []const u8, _allocator: std.mem.
     return i;
 }
 
-pub inline fn load_to_Image(filename: []const u8, _allocator: std.mem.Allocator) !sw.Image {
+pub inline fn loadToTexture(filename: []const u8, _allocator: std.mem.Allocator) !sw.Texture {
     var data = try std.fs.cwd().readFileAlloc(_allocator, filename, std.math.maxInt(u32));
     defer _allocator.free(data);
 
-    return load_from_memory_to_Image(data, _allocator);
+    return loadFromMemToTexture(data, _allocator);
 }

@@ -158,7 +158,7 @@ pub fn main() !void {
         //     std.log.warn("Updated {} time(s) this loop.", .{updatesThisLoop});
         // }
 
-        _ = c.SDL_UpdateTexture(tex, null, @ptrCast([*c]u8, game.img.pixels.ptr), Game.game_width * 4);
+        _ = c.SDL_UpdateTexture(tex, null, @ptrCast([*c]u8, game.img.texture.pixels.ptr), Game.game_width * 4);
         _ = c.SDL_RenderCopy(rend, tex, null, &c.SDL_Rect{ .x = 0, .y = 0, .w = Game.game_width * zoom, .h = Game.game_height * zoom });
         _ = c.SDL_RenderPresent(rend);
     }
@@ -191,5 +191,4 @@ pub fn main() !void {
 test {
     _ = std.testing.refAllDeclsRecursive(sw);
     _ = std.testing.refAllDeclsRecursive(input);
-    _ = std.testing.refAllDeclsRecursive(@import("bmfont.zig"));
 }

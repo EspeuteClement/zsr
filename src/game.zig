@@ -6,7 +6,7 @@ const Sound = @import("sounds.zig").Sound;
 const res = @import("resources.zig");
 const options = @import("options");
 
-img: sw.Image = undefined,
+img: sw.Surface = undefined,
 
 allocator: std.mem.Allocator = undefined,
 input: Input = Input{},
@@ -28,7 +28,7 @@ pub fn init(alloc: std.mem.Allocator, playSoundCB: ?*const fn (Sound) void, seed
     game.global_frames = seed;
     game.allocator = alloc;
     game.playSoundCb = playSoundCB;
-    game.img = try sw.Image.init(alloc, game_width, game_height);
+    game.img = try sw.Surface.init(alloc, game_width, game_height);
     errdefer game.img.deinit(alloc);
 
     game.reset();

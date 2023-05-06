@@ -68,51 +68,104 @@ inline fn between(value: anytype, min: anytype, max: anytype) bool {
     return value >= min and value < max;
 }
 
-pub const Image = struct {
+const DrawFlags = packed struct {
+    flip_horizontal: bool = false,
+    flip_vertical: bool = false,
+};
+
+// Pixels with a width and height
+pub const Texture = struct {
     width: i32,
     height: i32,
     pixels: []Color,
-    camera_x: i32,
-    camera_y: i32,
 
-    pub fn init(alloc: std.mem.Allocator, width: i32, height: i32) !Image {
+    pub fn init(alloc: std.mem.Allocator, width: i32, height: i32) !Texture {
         return .{
             .width = width,
             .height = height,
             .pixels = try alloc.alloc(Color, @intCast(usize, width * height)),
+        };
+    }
+
+    pub fn deinit(texture: *Self, alloc: std.mem.Allocator) void {
+        alloc.free(texture.pixels);
+        texture.* = undefined;
+    }
+
+    /// Draw the given pixel at the specific coordinate on the Surface, without any boundary check.
+    /// Only use this function if you have pre-clipped your coordinates
+    pub inline fn drawPixelFast(self: Self, x: i32, y: i32, pixel: Color) void {
+        self.pixels[self.index(x, y)] = pixel;
+    }
+
+    pub inline fn getPixelFast(self: Self, x: i32, y: i32) Color {
+        return self.pixels[self.index(x, y)];
+    }
+
+    pub inline fn index(self: Self, x: i32, y: i32) usize {
+        return @intCast(usize, x + y * self.width);
+    }
+
+    pub inline fn getRect(self: Self) Rect {
+        return Rect.xywh(0, 0, self.width, self.height);
+    }
+
+    pub inline fn indexFlags(self: Self, x: i32, y: i32, w: i32, h: i32, ox: i32, oy: i32, comptime flag: DrawFlags) usize {
+        const ix = x + if (flag.flip_horizontal) w - ox - 1 else ox;
+        const iy = y + if (flag.flip_vertical) h - oy - 1 else oy;
+        return @intCast(usize, ix + iy * self.width);
+    }
+
+    const Self = @This();
+};
+
+// An texture that you can draw on
+pub const Surface = struct {
+    texture: Texture,
+    camera_x: i32,
+    camera_y: i32,
+
+    pub fn init(alloc: std.mem.Allocator, width: i32, height: i32) !Surface {
+        return .{
+            .texture = try Texture.init(alloc, width, height),
             .camera_x = 0,
             .camera_y = 0,
         };
     }
 
-    pub fn deinit(self: *Image, alloc: std.mem.Allocator) void {
-        alloc.free(self.pixels);
+    inline fn offset(self: Surface, x: i32, y: i32) struct { x: i32, y: i32 } {
+        return .{ .x = x - self.camera_x, .y = y - self.camera_y };
+    }
+
+    pub fn deinit(self: *Surface, alloc: std.mem.Allocator) void {
+        self.texture.deinit(alloc);
         self.* = undefined;
     }
 
     /// Clear the image with the given color
-    pub fn drawClear(self: Image, color: Color) void {
-        @memset(self.pixels, color);
+    pub fn drawClear(self: Surface, color: Color) void {
+        @memset(self.texture.pixels, color);
     }
 
     test drawClear {
-        var img = try Image.init(std.testing.allocator, 8, 16);
+        var img = try Surface.init(std.testing.allocator, 8, 16);
         defer img.deinit(std.testing.allocator);
 
         img.drawClear(Color.fromRGB(0xabcdef));
-        try test_image_equals("drawClear.png", img);
+        try testTextureEquals("drawClear.png", img.texture);
     }
 
-    /// Put the given pixel at the specific coordinate on the Image.
+    /// Put the given pixel at the specific coordinate on the Surface.
     /// If the pixel is outside the screen, does nothing
-    pub fn drawPixel(self: Image, x: i32, y: i32, pixel: Color) void {
-        if (between(x, 0, self.width) and between(y, 0, self.height)) {
-            self.drawPixelFast(x, y, pixel);
+    pub fn drawPixel(self: Surface, x: i32, y: i32, pixel: Color) void {
+        var p = self.offset(x, y);
+        if (between(p.x, 0, self.texture.width) and between(p.y, 0, self.texture.height)) {
+            self.texture.drawPixelFast(p.x, p.y, pixel);
         }
     }
 
     test drawPixel {
-        var img = try Image.init(std.testing.allocator, 8, 16);
+        var img = try Surface.init(std.testing.allocator, 8, 16);
         defer img.deinit(std.testing.allocator);
 
         img.drawClear(Color.fromRGB(0xabcdef));
@@ -126,50 +179,28 @@ pub const Image = struct {
         img.drawPixel(16, 0, Color.fromRGB(0x777777));
         img.drawPixel(8, 24, Color.fromRGB(0x777777));
 
-        try test_image_equals("drawPixel.png", img);
+        try testTextureEquals("drawPixel.png", img.texture);
     }
 
-    /// Draw the given pixel at the specific coordinate on the Image, without any boundary check.
-    /// Only use this function if you have pre-clipped your coordinates
-    pub inline fn drawPixelFast(self: Image, x: i32, y: i32, pixel: Color) void {
-        self.pixels[self.index(x, y)] = pixel;
-    }
+    pub fn drawRect(dest: Surface, dest_x: i32, dest_y: i32, width: i32, height: i32, color: Color) void {
+        const p = dest.offset(dest_x, dest_y);
 
-    pub inline fn index(self: Image, x: i32, y: i32) usize {
-        return @intCast(usize, x + y * self.width);
-    }
-
-    pub inline fn indexFlags(self: Image, x: i32, y: i32, w: i32, h: i32, ox: i32, oy: i32, comptime flag: DrawFlags) usize {
-        const ix = x + if (flag.flip_horizontal) w - ox - 1 else ox;
-        const iy = y + if (flag.flip_vertical) h - oy - 1 else oy;
-        return @intCast(usize, ix + iy * self.width);
-    }
-
-    pub inline fn getPixelFast(self: Image, x: i32, y: i32) Color {
-        return self.pixels[self.index(x, y)];
-    }
-
-    pub inline fn getRect(self: Image) Rect {
-        return Rect.xywh(0, 0, self.width, self.height);
-    }
-
-    pub fn drawRect(dest: Image, dest_x: i32, dest_y: i32, width: i32, height: i32, color: Color) void {
-        const start_x = @max(0, dest_x - dest.camera_x);
-        var y = @max(0, dest_y - dest.camera_y);
-        const end_x = @min(dest_x + width - dest.camera_x, dest.width);
-        const end_y = @min(dest_y + height - dest.camera_y, dest.height);
+        const start_x = @max(0, p.x);
+        var y = @max(0, p.y);
+        const end_x = @min(p.x + width, dest.texture.width);
+        const end_y = @min(p.y + height, dest.texture.height);
 
         while (y < end_y) : (y += 1) {
             var x = start_x;
             while (x < end_x) : (x += 1) {
-                dest.drawPixelFast(x, y, color);
+                dest.texture.drawPixelFast(x, y, color);
             }
         }
     }
 
     test drawRect {
         {
-            var img = try Image.init(std.testing.allocator, 8, 16);
+            var img = try Surface.init(std.testing.allocator, 8, 16);
             defer img.deinit(std.testing.allocator);
 
             img.drawClear(Color.fromRGB(0xabcdef));
@@ -182,116 +213,113 @@ pub const Image = struct {
 
             img.drawRect(7, 15, 1, 1, red);
 
-            try test_image_equals("drawRect.png", img);
+            try testTextureEquals("drawRect.png", img.texture);
         }
     }
 
-    pub fn drawImageRectNoAlpha(dest: Image, dest_x: i32, dest_y: i32, source: Image, source_rect: Rect) void {
-        const start_x = @max(0, dest_x);
-        const start_y = @max(0, dest_y);
-        const w = @min(dest_x + source_rect.w, dest.width) - start_x;
-        const h = @min(dest_y + source_rect.h, dest.height) - start_y;
+    pub fn drawTextureRectNoAlpha(dest: Surface, dest_x: i32, dest_y: i32, source: Texture, source_rect: Rect) void {
+        const p = dest.offset(dest_x, dest_y);
+        const start_x = @max(0, p.x);
+        const start_y = @max(0, p.y);
+        const w = @min(p.x + source_rect.w, dest.texture.width) - start_x;
+        const h = @min(p.y + source_rect.h, dest.texture.height) - start_y;
         var y: i32 = 0;
 
-        const ox = (start_x - dest_x);
-        const oy = (start_y - dest_y);
+        const ox = (start_x - p.x);
+        const oy = (start_y - p.y);
 
         while (y < h) : (y += 1) {
             var x: i32 = 0;
             while (x < w) : (x += 1) {
                 const pixel = source.getPixelFast(source_rect.x + x + ox, source_rect.y + y + oy);
-                dest.drawPixelFast(x + start_x, y + start_y, pixel);
+                dest.texture.drawPixelFast(x + start_x, y + start_y, pixel);
             }
         }
     }
 
-    fn drawImageRectComptime(dest: Image, dest_x: i32, dest_y: i32, source: Image, source_rect: Rect, comptime flags: DrawFlags) void {
-        const start_x = @max(0, dest_x);
-        const start_y = @max(0, dest_y);
-        const w = @min(dest_x + source_rect.w, dest.width) - start_x;
-        const h = @min(dest_y + source_rect.h, dest.height) - start_y;
+    fn drawTextureRectComptime(dest: Surface, dest_x: i32, dest_y: i32, source: Texture, source_rect: Rect, comptime flags: DrawFlags) void {
+        const p = dest.offset(dest_x, dest_y);
+        const start_x = @max(0, p.x);
+        const start_y = @max(0, p.y);
+        const w = @min(p.x + source_rect.w, dest.texture.width) - start_x;
+        const h = @min(p.y + source_rect.h, dest.texture.height) - start_y;
         var y: i32 = 0;
 
-        const ox = (start_x - dest_x);
-        const oy = (start_y - dest_y);
+        const ox = (start_x - p.x);
+        const oy = (start_y - p.y);
 
         while (y < h) : (y += 1) {
             var x: i32 = 0;
             while (x < w) : (x += 1) {
                 const pixel = source.pixels[source.indexFlags(source_rect.x, source_rect.y, source_rect.w, source_rect.h, x + ox, y + oy, flags)];
-                const write = if (pixel.a != 0) pixel else dest.getPixelFast(x + start_x, y + start_y);
-                dest.drawPixelFast(x + start_x, y + start_y, write);
+                const write = if (pixel.a != 0) pixel else dest.texture.getPixelFast(x + start_x, y + start_y);
+                dest.texture.drawPixelFast(x + start_x, y + start_y, write);
             }
         }
     }
 
-    pub fn drawImageRect(dest: Image, dest_x: i32, dest_y: i32, source: Image, source_rect: Rect, flags: DrawFlags) void {
+    pub fn drawTextureRect(dest: Surface, dest_x: i32, dest_y: i32, source: Texture, source_rect: Rect, flags: DrawFlags) void {
         if (flags.flip_horizontal) {
             if (flags.flip_vertical) {
-                drawImageRectComptime(dest, dest_x, dest_y, source, source_rect, .{ .flip_horizontal = true, .flip_vertical = true });
+                drawTextureRectComptime(dest, dest_x, dest_y, source, source_rect, .{ .flip_horizontal = true, .flip_vertical = true });
             } else {
-                drawImageRectComptime(dest, dest_x, dest_y, source, source_rect, .{ .flip_horizontal = true, .flip_vertical = false });
+                drawTextureRectComptime(dest, dest_x, dest_y, source, source_rect, .{ .flip_horizontal = true, .flip_vertical = false });
             }
         } else {
             if (flags.flip_vertical) {
-                drawImageRectComptime(dest, dest_x, dest_y, source, source_rect, .{ .flip_horizontal = false, .flip_vertical = true });
+                drawTextureRectComptime(dest, dest_x, dest_y, source, source_rect, .{ .flip_horizontal = false, .flip_vertical = true });
             } else {
-                drawImageRectComptime(dest, dest_x, dest_y, source, source_rect, .{ .flip_horizontal = false, .flip_vertical = false });
+                drawTextureRectComptime(dest, dest_x, dest_y, source, source_rect, .{ .flip_horizontal = false, .flip_vertical = false });
             }
         }
     }
 
-    const DrawFlags = packed struct {
-        flip_horizontal: bool = false,
-        flip_vertical: bool = false,
-    };
-
-    test drawImageRect {
+    test drawTextureRect {
         const stbi = @import("stb_image.zig");
 
         {
-            var spr = try stbi.load_from_memory_to_Image(@embedFile("test/sprite.png"), std.testing.allocator);
+            var spr = try stbi.loadFromMemToTexture(@embedFile("test/sprite.png"), std.testing.allocator);
             defer spr.deinit(std.testing.allocator);
 
-            var img = try Image.init(std.testing.allocator, 8, 16);
+            var img = try Surface.init(std.testing.allocator, 8, 16);
             defer img.deinit(std.testing.allocator);
 
             img.drawClear(Color.fromRGB(0xabcdef));
 
             var rect = spr.getRect();
-            img.drawImageRect(-2, -2, spr, rect, .{});
-            img.drawImageRect(3, 1, spr, rect, .{});
-            img.drawImageRect(6, 14, spr, rect, .{});
-            img.drawImageRect(0, 12, spr, rect, .{});
+            img.drawTextureRect(-2, -2, spr, rect, .{});
+            img.drawTextureRect(3, 1, spr, rect, .{});
+            img.drawTextureRect(6, 14, spr, rect, .{});
+            img.drawTextureRect(0, 12, spr, rect, .{});
 
-            img.drawImageRect(5, 7, spr, Rect.xywh(2, 1, 2, 3), .{});
-            img.drawImageRect(-1, 3, spr, Rect.xywh(0, 2, 2, 2), .{});
+            img.drawTextureRect(5, 7, spr, Rect.xywh(2, 1, 2, 3), .{});
+            img.drawTextureRect(-1, 3, spr, Rect.xywh(0, 2, 2, 2), .{});
 
-            try test_image_equals("drawSprite.png", img);
+            try testTextureEquals("drawSprite.png", img.texture);
         }
 
         {
-            var spr = try stbi.load_from_memory_to_Image(@embedFile("test/sprite.png"), std.testing.allocator);
+            var spr = try stbi.loadFromMemToTexture(@embedFile("test/sprite.png"), std.testing.allocator);
             defer spr.deinit(std.testing.allocator);
 
-            var img = try Image.init(std.testing.allocator, 8, 16);
+            var img = try Surface.init(std.testing.allocator, 8, 16);
             defer img.deinit(std.testing.allocator);
 
             img.drawClear(Color.fromRGB(0xabcdef));
 
             var rect = spr.getRect();
-            img.drawImageRect(1, 1, spr, rect, .{ .flip_horizontal = true });
-            img.drawImageRect(0, 5, spr, rect, .{ .flip_vertical = true });
-            img.drawImageRect(0, 10, spr, rect, .{ .flip_horizontal = true, .flip_vertical = true });
-            img.drawImageRect(6, 10, spr, rect, .{ .flip_horizontal = true, .flip_vertical = true });
+            img.drawTextureRect(1, 1, spr, rect, .{ .flip_horizontal = true });
+            img.drawTextureRect(0, 5, spr, rect, .{ .flip_vertical = true });
+            img.drawTextureRect(0, 10, spr, rect, .{ .flip_horizontal = true, .flip_vertical = true });
+            img.drawTextureRect(6, 10, spr, rect, .{ .flip_horizontal = true, .flip_vertical = true });
 
-            img.drawImageRect(6, -2, spr, rect, .{ .flip_horizontal = true });
-            img.drawImageRect(-2, -3, spr, rect, .{ .flip_vertical = true });
-            img.drawImageRect(2, 15, spr, rect, .{ .flip_vertical = true });
+            img.drawTextureRect(6, -2, spr, rect, .{ .flip_horizontal = true });
+            img.drawTextureRect(-2, -3, spr, rect, .{ .flip_vertical = true });
+            img.drawTextureRect(2, 15, spr, rect, .{ .flip_vertical = true });
 
-            img.drawImageRect(4, 6, spr, Rect.xywh(1, 1, 3, 3), .{ .flip_horizontal = true });
+            img.drawTextureRect(4, 6, spr, Rect.xywh(1, 1, 3, 3), .{ .flip_horizontal = true });
 
-            try test_image_equals("drawSpriteFlip.png", img);
+            try testTextureEquals("drawSpriteFlip.png", img.texture);
         }
     }
 };
@@ -458,12 +486,13 @@ pub const Rect = struct {
     }
 };
 
-fn test_image_equals(comptime ref_path: []const u8, img: Image) !void {
+fn testTextureEquals(comptime ref_path: []const u8, img: Texture) !void {
     const stbi = @import("stb_image.zig");
+    stbi.initAllocatorsTest();
 
     const full_ours_path = comptime @import("tests").test_path ++ ref_path[0 .. ref_path.len - 4] ++ ".ours.png";
 
-    var refImg = try stbi.load_from_memory_to_Image(@embedFile("test/" ++ ref_path), std.testing.allocator);
+    var refImg = try stbi.loadFromMemToTexture(@embedFile("test/" ++ ref_path), std.testing.allocator);
     defer refImg.deinit(std.testing.allocator);
 
     try stbi.write_png(full_ours_path, img.width, img.height, 4, img.pixels.ptr, 0);

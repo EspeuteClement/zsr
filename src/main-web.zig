@@ -40,8 +40,8 @@ pub fn print(str: []const u8) void {
     Imports.print(@intCast(i32, @ptrToInt(str.ptr)), @intCast(i32, str.len));
 }
 
-pub fn draw(i: sw.Image) void {
-    var bytes = std.mem.sliceAsBytes(i.pixels);
+pub fn draw(i: sw.Surface) void {
+    var bytes = std.mem.sliceAsBytes(i.texture.pixels);
     Imports.draw(@intCast(i32, @ptrToInt(bytes.ptr)), @intCast(i32, bytes.len));
 }
 
